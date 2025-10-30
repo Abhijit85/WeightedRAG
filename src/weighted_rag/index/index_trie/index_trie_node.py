@@ -1,8 +1,8 @@
-"""In-memory Vector Index Tree built with FAISS."""
+"""In-memory Vector Index Tree Node built with FAISS."""
 
 import faiss
 import numpy as np
-from data_classes import Data
+from .data_classes import Data
 
 """
 A node represents a dense embedding of a table, paragraph, or image
@@ -16,7 +16,7 @@ How do we represent these forms of data within our search structure?
 
 
 class IndexNode:
-    def __init__(self, dim: int):
+    def __init__(self, dim: int, text_value="", data=None):
         """
         Initialize the Index Node
 
@@ -25,9 +25,12 @@ class IndexNode:
         """
 
         self.index = faiss.IndexFlatIP(dim)
-        self.data: [Data | IndexNode] = []
+        self.text_value = text_value
+        self.data = data
+        self.adj_dict: [Data | IndexNode] = {}
+        self.adj: [Data | IndexNode] = []
 
-    def write(self, embedding: np.array, data: Data | IndexNode):
+    def add_child(self, embedding: np.array, node: IndexNode, data: Data | IndexNode):
         """
         Writes data to the store.
 
@@ -39,28 +42,39 @@ class IndexNode:
         if embedding.ndim > 1:
             raise Exception("Invalid dimensions of embedding vector.")
 
-        self.index.add(faiss.normalize_L2(embedding).reshape(1, -1))
-        self.data.append(data)
+        self.index.add(embedding)
+        self.adj.append(node)
+        self.adj_dict[data] = node
 
-    def retrieve(self, query_embedding: np.array, k: int = 10) -> [str]:
+    def search_children(self, q_embeddings: np.array):
         """
-        Performs a k-nearest neighbor retrieval.
+        Searches children based on query embedding.
 
         Args:
-            query (np.array): The embedding of the query being used for retrieval.
-            k (int): The amount of nearest neighbors to retrieve.
+            embedding (np.array): The embedding vector being added to the index.
+            data (Data|StoreNode): The data associated with the embedding being added.
         """
-        faiss.normalize_L2(query_embedding)
-        D, I = self.index.search(query_embedding)
+        avg_q_embedding = np.mean(q_embeddings, axis=0, keepdims=True)
+        D, I = self.index.search(faiss.normalize_L2(avg_q_embedding), len(self.adj))
         idx = 0
         distances, indices = (D[idx], I[idx])
-
-        retrieved_data = []
+        res = []
         for dist, idx in zip(distances, indices):
-            data = self.data[idx]
-            retrieved_data.append(data)
+            node = self.adj[idx]
+            res.append((dist, node))
+        return res
 
-        return retrieved_data
+    def __lt__(self, other):
+        """Less than comparison, primarily used for heap operations"""
+        if not isinstance(other, IndexNode):
+            raise NotImplementedError
+        return self.text_value < other.text_value
+
+    def __eq__(self, other):
+        """Equality comparison"""
+        if not isinstance(other, IndexNode):
+            raise NotImplementedError
+        return self.text_value == other.text_value and self.data == other.data
 
     def save(self):
         """
@@ -69,4 +83,7 @@ class IndexNode:
         raise NotImplementedError
 
     def __exit__(self):
-        self.save()
+        try:
+            self.save()
+        except Exception as e:
+            print(e)
