@@ -1,0 +1,121 @@
+# Evaluation Log — NQ Tables
+
+This log describes how to prepare the Natural Questions (NQ) tables subset for the WeightedRAG pipeline and how to run the retrieval evaluation so the resulting metrics can be human-reviewed. Append the actual evaluation stdout at the bottom of this file every time the benchmark is executed.
+
+---
+
+## 1. Environment & Dependencies
+
+```bash
+python3 -m venv .venv-nq
+source .venv-nq/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt  # include numpy, transformers, sentence-transformers, faiss-cpu, tqdm, beautifulsoup4
+```
+
+> If FAISS GPU is available, swap `faiss-cpu` for `faiss-gpu`. Ensure `python` resolves to the virtualenv interpreter when running the commands below.
+
+---
+
+## 2. Acquire the NQ Tables Source
+
+1. Download the official Natural Questions training files (contains HTML tables) from Google Cloud Storage:
+
+```bash
+mkdir -p datasets/nq-table/raw
+gsutil -m cp gs://natural_questions/v1.0/train/nq-train-*.jsonl.gz datasets/nq-table/raw/
+```
+
+2. Decompress the shards you plan to use:
+
+```bash
+for file in datasets/nq-table/raw/*.jsonl.gz; do
+  gunzip -k "$file"
+done
+```
+
+You should now have `datasets/nq-table/raw/nq-train-*.jsonl` ready for the extractor.
+
+---
+
+## 3. Extract Table QA Interactions
+
+Use the corrected extractor to pull table-centric QA pairs. Adjust `--sample` if you only need a subset.
+
+```bash
+python chunking/utils/corrected_nq_table_extractor.py \
+  --input datasets/nq-table/raw/nq-train-00.jsonl \
+  --output datasets/nq-table/nq_table_full_extraction.jsonl \
+  --sample 50000
+```
+
+Expected output: `datasets/nq-table/nq_table_full_extraction.jsonl` containing question/table/answer triples.
+
+---
+
+## 4. Generate Retrieval Chunks
+
+Run the enhanced table processor to create multi-granular chunks (full table, rows, sliding windows, etc.).
+
+```bash
+cd chunking/core
+python create_retrieval_tables.py --max-entries 50000
+cd ../..
+```
+
+Artifacts:
+
+- `retrieval_tables/processed_tables.jsonl`
+- `retrieval_tables/retrieval_chunks.jsonl`
+- Per-chunk-type files inside `retrieval_tables/`
+
+---
+
+## 5. Convert to BEIR Format
+
+Transform the processed tables and chunks into `corpus.jsonl`, `queries.jsonl`, and `qrels.tsv` so the evaluation tooling can consume them.
+
+```bash
+python scripts/prepare_nq_tables_beir.py \
+  --tables retrieval_tables/processed_tables.jsonl \
+  --chunks retrieval_tables/retrieval_chunks.jsonl \
+  --output-dir datasets/nq-table/beir \
+  --chunk-types full_table,table_only,table_row,sliding_window,table_sample,pure_table
+```
+
+This writes BEIR-compatible files to `datasets/nq-table/beir/`.
+
+---
+
+## 6. Run WeightedRAG Retrieval Evaluation
+
+Execute the standard evaluator on the converted split. The command below saves structured metrics to `outputs/nq_table_metrics.json` and appends the human-readable log to this file for auditability.
+
+```bash
+python scripts/evaluate_retrieval.py \
+  --dataset-root datasets/nq-table/beir \
+  --ks 1,3,5,10 \
+  --max-queries 1000 \
+  --save-results outputs/nq_table_metrics.json | tee -a evaluation_log.txt
+```
+
+After the run completes, inspect the summary printed above the `tee` delimiter as well as the JSON file for per-stage metrics.
+
+---
+
+## 7. Manual Checklist
+
+- [ ] Confirm `retrieval_tables/retrieval_chunks.jsonl` and `datasets/nq-table/beir/corpus.jsonl` have similar document counts.
+- [ ] Spot-check a handful of queries in `datasets/nq-table/beir/queries.jsonl` to ensure the wording matches the original NQ questions.
+- [ ] Verify `outputs/nq_table_metrics.json` contains non-zero values for the reported metrics (P@K, R@K, NDCG@K, MRR).
+- [ ] Ensure this `evaluation_log.txt` has the latest evaluation stdout appended under the section below.
+
+---
+
+## 8. Latest Evaluation Output
+
+Append the raw evaluator stdout for each run below this line (use `tee -a evaluation_log.txt` as shown above).
+
+```
+<place stdout here after running the evaluate_retrieval.py command>
+```
