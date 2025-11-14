@@ -42,10 +42,13 @@ class WeightedRAGPipeline:
         texts = [chunk.text for chunk in chunks]
         ids = [chunk.chunk_id for chunk in chunks]
         embeddings = self.embedder.embed(ids, texts)
-        stage_embeddings = {
-            dim: embeddings.slices.get(dim) or embeddings.vectors[:, :dim]
-            for dim in {stage.dimension for stage in self.config.retrieval.stages}
-        }
+        stage_embeddings = {}
+        for dim in {stage.dimension for stage in self.config.retrieval.stages}:
+            slice_embedding = embeddings.slices.get(dim)
+            if slice_embedding is not None:
+                stage_embeddings[dim] = slice_embedding
+            else:
+                stage_embeddings[dim] = embeddings.vectors[:, :dim]
         self.index.add_chunks(chunks, stage_embeddings)
         self._chunk_count += len(chunks)
         return len(chunks)

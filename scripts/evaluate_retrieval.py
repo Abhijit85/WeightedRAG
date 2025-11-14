@@ -8,6 +8,7 @@ import json
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
+from tqdm import tqdm
 
 from weighted_rag import WeightedRAGPipeline
 from weighted_rag.config import PipelineConfig, pipeline_config_from_dict
@@ -28,7 +29,40 @@ def parse_args() -> argparse.Namespace:
 
 def load_config(path: Path | None) -> PipelineConfig:
     if path is None:
-        return PipelineConfig()
+        # Use a safe default configuration
+        from weighted_rag.config import EmbeddingConfig, ChunkingConfig, RetrievalConfig, IndexStageConfig
+        
+        embedding_config = EmbeddingConfig(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            batch_size=16,
+            use_fp16=False,
+            device="cpu",
+            normalize=True,
+            truncate_dims=None
+        )
+        
+        chunking_config = ChunkingConfig(
+            max_tokens=128,  # Very small chunks
+            overlap_tokens=16,
+            tokenizer_name="bert-base-uncased"
+        )
+        
+        retrieval_config = RetrievalConfig(
+            stages=[IndexStageConfig(
+                name="dense",
+                dimension=384,
+                top_k=100,
+                weight=1.0,
+                normalize=True,
+                index_factory="HNSW32"
+            )]
+        )
+        
+        return PipelineConfig(
+            chunking=chunking_config,
+            embedding=embedding_config,
+            retrieval=retrieval_config
+        )
     payload: Dict[str, Any] = json.loads(path.read_text())
     return pipeline_config_from_dict(payload)
 
@@ -74,8 +108,37 @@ def evaluate(dataset_root: Path, config: PipelineConfig, ks: List[int], max_quer
 
     print("Indexing corpus...")
     documents = list(split.corpus.values())
-    total_chunks = pipeline.add_documents(documents)
-    print(f"Indexed {total_chunks} chunks across {len(documents)} documents.")
+    
+    # For testing, start with just a small subset of documents
+    if len(documents) > 100:
+        print(f"Using first 100 documents out of {len(documents)} for testing...")
+        documents = documents[:100]
+    
+    # Process documents in very small batches to show progress and avoid memory issues
+    batch_size = 5  # Process only 5 documents at a time
+    total_chunks = 0
+    
+    with tqdm(total=len(documents), desc="Processing documents", unit="docs") as pbar:
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i:i + batch_size]
+            try:
+                print(f"\nProcessing batch {i//batch_size + 1}/{(len(documents) + batch_size - 1)//batch_size}")
+                batch_chunks = pipeline.add_documents(batch)
+                total_chunks += batch_chunks
+                
+                pbar.update(len(batch))
+                pbar.set_postfix(total_chunks=total_chunks, batch_chunks=batch_chunks)
+                print(f"Batch completed: {batch_chunks} chunks created")
+            except Exception as e:
+                print(f"\nError processing batch {i//batch_size + 1}: {e}")
+                print(f"Batch documents: {len(batch)}")
+                if batch:
+                    print(f"First doc length: {len(batch[0].text)}")
+                # Skip this batch and continue
+                pbar.update(len(batch))
+                continue
+    
+    print(f"✓ Indexed {total_chunks} chunks across {len(documents)} documents.")
 
     stage_names = [stage.name for stage in config.retrieval.stages]
     stage_metrics: Dict[str, Dict[str, float]] = {name: {} for name in stage_names}
@@ -84,44 +147,67 @@ def evaluate(dataset_root: Path, config: PipelineConfig, ks: List[int], max_quer
     per_query_output: List[Dict[str, Any]] = []
     start_time = time.perf_counter()
 
-    for query_id, query in split.queries.items():
-        if max_queries is not None and evaluated >= max_queries:
-            break
-        qrel = split.qrels.get(query_id)
-        if not qrel:
-            continue
-        retrieval, stage_results = pipeline.retrieve_with_details(query)
-        final_docs = unique_doc_sequence([item.chunk.chunk_id for item in retrieval.chunks], pipeline)
-        query_metrics = compute_metrics(final_docs, qrel, ks)
-        if not query_metrics:
-            continue
-
-        merge_metrics(final_metrics, query_metrics)
-
-        stage_details: Dict[str, Any] = {}
-        for name in stage_names:
-            result = stage_results.get(name)
-            if not result:
+    # Determine total queries to evaluate
+    total_queries = len(split.queries)
+    if max_queries is not None:
+        total_queries = min(total_queries, max_queries)
+    
+    # Add progress bar for query evaluation
+    queries_to_process = list(split.queries.items())[:total_queries] if max_queries else list(split.queries.items())
+    
+    with tqdm(total=len(queries_to_process), desc="Evaluating queries", unit="queries") as pbar:
+        for query_id, query in queries_to_process:
+            if max_queries is not None and evaluated >= max_queries:
+                break
+            qrel = split.qrels.get(query_id)
+            if not qrel:
+                pbar.update(1)
                 continue
-            ranked_docs = unique_doc_sequence(result.ids, pipeline)
-            metrics = compute_metrics(ranked_docs, qrel, ks)
-            merge_metrics(stage_metrics.setdefault(name, {}), metrics)
-            stage_details[name] = {
-                "retrieved": ranked_docs[: max(ks)],
-                "metrics": metrics,
-            }
+            
+            retrieval, stage_results = pipeline.retrieve_with_details(query)
+            final_docs = unique_doc_sequence([item.chunk.chunk_id for item in retrieval.chunks], pipeline)
+            query_metrics = compute_metrics(final_docs, qrel, ks)
+            
+            if not query_metrics:
+                pbar.update(1)
+                continue
 
-        per_query_output.append(
-            {
-                "query_id": query_id,
-                "query": query.text,
-                "qrels": qrel,
-                "final_ranked_docs": final_docs[: max(ks)],
-                "metrics": query_metrics,
-                "stage_details": stage_details,
-            }
-        )
-        evaluated += 1
+            merge_metrics(final_metrics, query_metrics)
+
+            stage_details: Dict[str, Any] = {}
+            for name in stage_names:
+                result = stage_results.get(name)
+                if not result:
+                    continue
+                ranked_docs = unique_doc_sequence(result.ids, pipeline)
+                metrics = compute_metrics(ranked_docs, qrel, ks)
+                merge_metrics(stage_metrics.setdefault(name, {}), metrics)
+                stage_details[name] = {
+                    "retrieved": ranked_docs[: max(ks)],
+                    "metrics": metrics,
+                }
+
+            per_query_output.append(
+                {
+                    "query_id": query_id,
+                    "query": query.text,
+                    "qrels": qrel,
+                    "final_ranked_docs": final_docs[: max(ks)],
+                    "metrics": query_metrics,
+                    "stage_details": stage_details,
+                }
+            )
+            evaluated += 1
+            
+            # Update progress bar with current metrics
+            if evaluated % 5 == 0 and final_metrics:  # Update every 5 queries
+                avg_metrics = average_metrics(final_metrics, evaluated)
+                mrr = avg_metrics.get('mrr', 0)
+                pbar.set_postfix(evaluated=evaluated, MRR=f"{mrr:.3f}")
+            else:
+                pbar.set_postfix(evaluated=evaluated)
+            
+            pbar.update(1)
 
     elapsed = time.perf_counter() - start_time
     print(f"Evaluated {evaluated} queries in {elapsed:.2f}s ({evaluated / max(elapsed, 1e-6):.2f} qps)")

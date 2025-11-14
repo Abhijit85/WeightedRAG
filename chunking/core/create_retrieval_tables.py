@@ -31,7 +31,7 @@ def create_enhanced_retrieval_tables(max_entries=None):
     table_processor = TableProcessor(timeout_seconds=5)  # Increased timeout for full dataset
     
     # Setup paths
-    input_file = Path("nq_table_full_extraction.jsonl")
+    input_file = Path("../../datasets/nq-table/nq_table_full_extraction.jsonl")
     output_dir = Path("retrieval_tables")
     output_dir.mkdir(exist_ok=True)
     

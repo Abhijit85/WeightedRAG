@@ -5,3 +5,11 @@ __pycache__/
 # Virtual environments
 .venv/
 .env
+
+# Datasets
+datasets/nq-table/
+
+# Generated retrieval tables
+chunking/core/retrieval_tables/*
+
+retrieval_tables/*

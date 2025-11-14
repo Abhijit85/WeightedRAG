@@ -1,0 +1,27 @@
+{
+    "chunking": {
+        "max_tokens": 150,
+        "overlap_tokens": 15,
+        "tokenizer_name": "bert-base-uncased"
+    },
+    "embedding": {
+        "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+        "batch_size": 16,
+        "use_fp16": false,
+        "device": "cpu",
+        "normalize": true,
+        "truncate_dims": null
+    },
+    "retrieval": {
+        "stages": [
+            {
+                "name": "dense",
+                "dimension": 384,
+                "top_k": 100,
+                "weight": 1.0,
+                "normalize": true,
+                "index_factory": "HNSW32"
+            }
+        ]
+    }
+}

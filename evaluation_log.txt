@@ -119,3 +119,4 @@ Append the raw evaluator stdout for each run below this line (use `tee -a evalua
 ```
 <place stdout here after running the evaluate_retrieval.py command>
 ```
+Indexing corpus...
