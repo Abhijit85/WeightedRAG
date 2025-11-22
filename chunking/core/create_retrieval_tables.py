@@ -37,11 +37,8 @@ def create_enhanced_retrieval_tables(max_entries=None):
     
     # Separate files for each chunk type
     chunk_files = {
-        'full_table': output_dir / "chunks_full_table.jsonl",
         'pure_table': output_dir / "chunks_pure_table.jsonl", 
-        'table_only': output_dir / "chunks_table_only.jsonl",
         'table_row': output_dir / "chunks_table_row.jsonl",
-        'sliding_window': output_dir / "chunks_sliding_window.jsonl",
         'table_sample': output_dir / "chunks_table_sample.jsonl"
     }
     

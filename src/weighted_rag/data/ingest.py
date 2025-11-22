@@ -45,7 +45,9 @@ def load_documents(source: Path, **kwargs) -> List[Document]:
     if source.is_dir():
         documents.extend(load_text_files(source, kwargs.get("metadata")))
     elif source.suffix == ".jsonl":
-        documents.extend(load_jsonl(source, **kwargs))
+        # Filter kwargs for load_jsonl
+        jsonl_kwargs = {k: v for k, v in kwargs.items() if k in {"text_field", "id_field"}}
+        documents.extend(load_jsonl(source, **jsonl_kwargs))
     else:
         raise ValueError(f"Unsupported source: {source}")
     return documents

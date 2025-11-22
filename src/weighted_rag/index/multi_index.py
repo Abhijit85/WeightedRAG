@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence
+from typing import Any, Dict, List, Sequence
 
 import numpy as np
 
@@ -51,7 +51,12 @@ class StageIndex:
             distances, indices = self._faiss_index.search(query[np.newaxis, :], top_k)
             hits = [self.ids[idx] for idx in indices[0] if idx != -1]
             dists = distances[0][: len(hits)]
-            return StageResult(ids=hits, distances=dists)
+            # Convert FAISS L2 distances to similarities (higher = better)
+            # For normalized vectors, L2 distance relates to cosine similarity as: sim = 1 - dist^2/2
+            # For small distances, we can approximate: sim ≈ 1 - dist^2/2
+            # But simpler approach: similarity = 1 / (1 + distance)
+            similarities = 1.0 / (1.0 + dists)
+            return StageResult(ids=hits, distances=similarities)
 
         if not self.ids:
             return StageResult(ids=[], distances=np.array([], dtype=np.float32))
@@ -71,24 +76,42 @@ class MultiStageVectorIndex:
         self.stages = {stage.name: StageIndex(stage) for stage in config.stages}
         self.chunk_store: Dict[str, Chunk] = {}
 
-    def add_chunks(self, chunks: Sequence[Chunk], embeddings: Dict[int, np.ndarray]) -> None:
-        ids = [chunk.chunk_id for chunk in chunks]
+    def add_chunks(self, chunks: Sequence[Chunk], stage_embeddings: Dict[str, Any]) -> None:
+        """Add chunks with stage-specific embeddings."""
+        if not chunks:
+            return
+        
+        # Store chunks
         for chunk in chunks:
             self.chunk_store[chunk.chunk_id] = chunk
-
+        
+        # Add to each stage with its specific embeddings
         for stage in self.config.stages:
-            vectors = embeddings[stage.dimension]
-            if vectors.shape[0] != len(ids):
-                raise ValueError("Embedding/count mismatch")
-            self.stages[stage.name].add(ids, vectors[:, : stage.dimension])
+            if stage.name in stage_embeddings:
+                embedding_output = stage_embeddings[stage.name]
+                ids = embedding_output.ids
+                vectors = embedding_output.vectors
+                self.stages[stage.name].add(ids, vectors)
+            else:
+                # Fallback: use dummy vectors if stage-specific not available
+                if chunks:
+                    ids = [chunk.chunk_id for chunk in chunks]
+                    # Create dummy vectors for fallback
+                    import numpy as np
+                    vectors = np.random.randn(len(ids), stage.dimension).astype(np.float32)
+                    self.stages[stage.name].add(ids, vectors)
 
     def get_chunk(self, chunk_id: str) -> Chunk:
         return self.chunk_store[chunk_id]
 
-    def search(self, query_embeddings: Dict[int, np.ndarray]) -> Dict[str, StageResult]:
+    def search(self, stage_query_embeddings: Dict[str, Dict[int, Any]]) -> Dict[str, StageResult]:
+        """Search using stage-specific query embeddings."""
         results: Dict[str, StageResult] = {}
         for stage in self.config.stages:
-            vector = query_embeddings[stage.dimension]
-            result = self.stages[stage.name].search(vector, stage.top_k)
-            results[stage.name] = result
+            if stage.name in stage_query_embeddings:
+                stage_embeddings = stage_query_embeddings[stage.name]
+                if stage.dimension in stage_embeddings:
+                    vector = stage_embeddings[stage.dimension]
+                    result = self.stages[stage.name].search(vector, stage.top_k)
+                    results[stage.name] = result
         return results

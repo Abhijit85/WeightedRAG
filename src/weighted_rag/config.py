@@ -6,11 +6,16 @@ from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Optional, Type, TypeVar, get_args, get_origin
 
 
-@dataclass
+@dataclass  
 class ChunkingConfig:
+
     max_tokens: int = 200
     overlap_tokens: int = 20
     tokenizer_name: str = "bert-base-uncased"
+    enabled_chunk_types: List[str] = field(default_factory=lambda: [
+        "full_table", "table_row"
+    ])
+    chunk_type_params: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -24,15 +29,21 @@ class IndexStageConfig:
     ef_search: int = 64
     ef_construction: int = 200
     quantize: Optional[str] = None
+    model_name: Optional[str] = None  # Allow different models per stage
 
 
 @dataclass
 class RetrievalConfig:
     stages: List[IndexStageConfig] = field(
         default_factory=lambda: [
-            IndexStageConfig(name="coarse", dimension=256, top_k=500, weight=0.2),
-            IndexStageConfig(name="mid", dimension=512, top_k=50, weight=0.3),
-            IndexStageConfig(name="fine", dimension=2048, top_k=10, weight=0.5, index_factory="Flat"),
+            IndexStageConfig(
+                name="coarse", 
+                dimension=384, 
+                top_k=200, 
+                weight=1.0, 
+                index_factory="HNSW32",
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            ),
         ]
     )
     lambda_similarity: float = 0.7

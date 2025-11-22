@@ -48,14 +48,17 @@ def load_config(path: Path | None) -> PipelineConfig:
         )
         
         retrieval_config = RetrievalConfig(
-            stages=[IndexStageConfig(
-                name="dense",
-                dimension=384,
-                top_k=100,
-                weight=1.0,
-                normalize=True,
-                index_factory="HNSW32"
-            )]
+            stages=[
+                IndexStageConfig(
+                    name="coarse",
+                    dimension=384,
+                    top_k=200,
+                    weight=1.0,
+                    normalize=True,
+                    index_factory="HNSW32",
+                    model_name="sentence-transformers/all-MiniLM-L6-v2"
+                )
+            ]
         )
         
         return PipelineConfig(
@@ -108,11 +111,7 @@ def evaluate(dataset_root: Path, config: PipelineConfig, ks: List[int], max_quer
 
     print("Indexing corpus...")
     documents = list(split.corpus.values())
-    
-    # For testing, start with just a small subset of documents
-    if len(documents) > 100:
-        print(f"Using first 100 documents out of {len(documents)} for testing...")
-        documents = documents[:100]
+    print(f"Indexing {len(documents)} documents from corpus...")
     
     # Process documents in very small batches to show progress and avoid memory issues
     batch_size = 5  # Process only 5 documents at a time

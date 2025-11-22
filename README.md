@@ -149,7 +149,7 @@ Use this workflow to regenerate the NQ Tables dataset, convert it to BEIR format
      --tables retrieval_tables/processed_tables.jsonl \
      --chunks retrieval_tables/retrieval_chunks.jsonl \
      --output-dir datasets/nq-table/beir \
-     --chunk-types full_table,table_only,table_row,sliding_window,table_sample,pure_table
+     --chunk-types table_row,table_sample,pure_table
    ```
 5. **Run evaluation and append the log**
    ```bash

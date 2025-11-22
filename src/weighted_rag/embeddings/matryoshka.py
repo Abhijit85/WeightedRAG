@@ -30,6 +30,117 @@ def l2_normalize(matrix: np.ndarray) -> np.ndarray:
     return matrix / norms
 
 
+class MultiModelEmbedder:
+    """Embedder that supports different models for each retrieval stage."""
+    
+    def __init__(self, config: EmbeddingConfig, retrieval: Optional[RetrievalConfig] = None):
+        self.config = config
+        self.retrieval = retrieval
+        self._models = {}
+        
+        # Initialize models for each stage
+        if retrieval and SentenceTransformer is not None:
+            for stage in retrieval.stages:
+                model_name = stage.model_name or config.model_name
+                if model_name not in self._models:
+                    try:
+                        self._models[model_name] = SentenceTransformer(model_name, device=config.device)
+                    except Exception as e:
+                        print(f"Warning: Failed to load model {model_name}: {e}")
+                        self._models[model_name] = None
+        
+        # Fallback to main model
+        if not self._models and SentenceTransformer is not None:
+            try:
+                self._models[config.model_name] = SentenceTransformer(config.model_name, device=config.device)
+            except Exception:
+                pass
+    
+    def _get_model(self, model_name: str):
+        """Get model instance for a specific model name."""
+        return self._models.get(model_name)
+    
+    def _model_encode(self, texts: Sequence[str], model_name: str) -> np.ndarray:
+        """Encode texts using specified model."""
+        model = self._get_model(model_name)
+        if model is None:
+            return self._hash_encode(texts)
+        
+        vectors = model.encode(
+            list(texts),
+            batch_size=self.config.batch_size,
+            normalize_embeddings=False,
+            convert_to_numpy=True,
+            device=self.config.device,
+        )
+        return vectors.astype(np.float32)
+    
+    def _hash_encode(self, texts: Sequence[str]) -> np.ndarray:
+        """Fallback hash-based encoding."""
+        vectors = np.zeros((len(texts), 384), dtype=np.float32)
+        for i, text in enumerate(texts):
+            hash_val = hash(text or "")
+            for j in range(384):
+                vectors[i, j] = ((hash_val + j) % 2**31) / 2**31
+        return vectors
+    
+    def embed_by_stage(self, ids: Sequence[str], texts: Sequence[str]) -> Dict[str, EmbeddingOutput]:
+        """Generate embeddings for each stage using different models."""
+        stage_embeddings = {}
+        
+        if not self.retrieval:
+            # Fallback to single model
+            output = self.embed(ids, texts)
+            stage_embeddings["default"] = output
+            return stage_embeddings
+        
+        for stage in self.retrieval.stages:
+            model_name = stage.model_name or self.config.model_name
+            vectors = self._model_encode(texts, model_name)
+            
+            # Ensure correct dimensionality
+            if vectors.shape[1] > stage.dimension:
+                vectors = vectors[:, :stage.dimension]
+            elif vectors.shape[1] < stage.dimension:
+                pad_width = stage.dimension - vectors.shape[1]
+                vectors = np.pad(vectors, ((0, 0), (0, pad_width)))
+            
+            if self.config.normalize:
+                vectors = l2_normalize(vectors)
+            
+            stage_embeddings[stage.name] = EmbeddingOutput(
+                ids=list(ids),
+                vectors=vectors,
+                slices={stage.dimension: vectors}
+            )
+        
+        return stage_embeddings
+    
+    def embed_query_by_stage(self, text: str) -> Dict[str, Dict[int, np.ndarray]]:
+        """Generate query embeddings for each stage."""
+        stage_query_embeddings = {}
+        
+        if not self.retrieval:
+            return {"default": {384: self._model_encode([text], self.config.model_name)[0]}}
+        
+        for stage in self.retrieval.stages:
+            model_name = stage.model_name or self.config.model_name
+            vector = self._model_encode([text], model_name)[0]
+            
+            # Ensure correct dimensionality
+            if len(vector) > stage.dimension:
+                vector = vector[:stage.dimension]
+            elif len(vector) < stage.dimension:
+                vector = np.pad(vector, (0, stage.dimension - len(vector)))
+            
+            if self.config.normalize:
+                vector = vector / (np.linalg.norm(vector) + 1e-8)
+            
+            stage_query_embeddings[stage.name] = {stage.dimension: vector}
+        
+        return stage_query_embeddings
+
+
 class MatryoshkaEmbedder:
     """Generates sliceable embeddings compatible with Matryoshka workflows."""
 

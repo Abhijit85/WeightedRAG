@@ -15,12 +15,13 @@
     "retrieval": {
         "stages": [
             {
-                "name": "dense",
+                "name": "coarse",
                 "dimension": 384,
-                "top_k": 100,
+                "top_k": 200,
                 "weight": 1.0,
                 "normalize": true,
-                "index_factory": "HNSW32"
+                "index_factory": "HNSW32",
+                "model_name": "sentence-transformers/all-MiniLM-L6-v2"
             }
         ]
     }
