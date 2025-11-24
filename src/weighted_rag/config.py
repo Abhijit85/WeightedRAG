@@ -38,11 +38,11 @@ class RetrievalConfig:
         default_factory=lambda: [
             IndexStageConfig(
                 name="coarse", 
-                dimension=384, 
+                dimension=1024, 
                 top_k=200, 
                 weight=1.0, 
                 index_factory="HNSW32",
-                model_name="sentence-transformers/all-MiniLM-L6-v2"
+                model_name="sentence-transformers/all-roberta-large-v1"
             ),
         ]
     )

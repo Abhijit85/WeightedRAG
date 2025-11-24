@@ -33,7 +33,7 @@ def load_config(path: Path | None) -> PipelineConfig:
         from weighted_rag.config import EmbeddingConfig, ChunkingConfig, RetrievalConfig, IndexStageConfig
         
         embedding_config = EmbeddingConfig(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_name="sentence-transformers/all-roberta-large-v1",
             batch_size=16,
             use_fp16=False,
             device="cpu",
@@ -51,12 +51,12 @@ def load_config(path: Path | None) -> PipelineConfig:
             stages=[
                 IndexStageConfig(
                     name="coarse",
-                    dimension=384,
+                    dimension=1024,
                     top_k=200,
                     weight=1.0,
                     normalize=True,
                     index_factory="HNSW32",
-                    model_name="sentence-transformers/all-MiniLM-L6-v2"
+                    model_name="sentence-transformers/all-roberta-large-v1"
                 )
             ]
         )
