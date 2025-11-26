@@ -139,7 +139,8 @@ Use this workflow to regenerate the NQ Tables dataset, convert it to BEIR format
    ```
 3. **Generate multi-granular chunks**
    ```bash
-   python chunking/core/create_retrieval_tables.py 
+    python chunking/core/create_retrieval_tables.py --max_entries 50000
+  
    ```
 4. **Convert to BEIR split**
    ```bash
@@ -151,11 +152,7 @@ Use this workflow to regenerate the NQ Tables dataset, convert it to BEIR format
    ```
 5. **Run evaluation and append the log**
    ```bash
-   python scripts/evaluate_retrieval.py \
-     --dataset-root datasets/nq-table/beir \
-     --ks 1,3,5,10 \
-     --max-queries 1000 \
-     --save-results outputs/nq_table_metrics.json | tee -a evaluation_log.txt
+   python -m scripts.evaluate_retrieval --dataset-root datasets/nq-table/beir  --save-results outputs/nq_table_metrics.json
    ```
 
 The detailed checklist lives in `evaluation_log.txt`. Each time you run the benchmark, append the stdout via `tee -a evaluation_log.txt` and verify the manual checks at the top of that file.
