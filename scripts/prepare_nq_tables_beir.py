@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -37,6 +38,112 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated subset of chunk types to keep in the BEIR corpus.",
     )
     return parser.parse_args()
+
+
+def filter_dataset_for_chunks(output_dir: Path, chunk_types: str) -> Dict[str, int]:
+    """Filter BEIR dataset to remove queries that don't have corresponding chunks.
+    
+    Args:
+        output_dir: Directory containing the BEIR files
+        chunk_types: Comma-separated chunk types that were included
+    
+    Returns:
+        Dictionary with filtering statistics
+    """
+    print("\n🔍 Filtering dataset to remove queries without table chunks...")
+    
+    # Paths
+    queries_file = output_dir / "queries.jsonl"
+    qrels_file = output_dir / "qrels.tsv"
+    corpus_file = output_dir / "corpus.jsonl"
+    
+    # Get valid table IDs from corpus
+    valid_table_ids = set()
+    with open(corpus_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            corpus_item = json.loads(line.strip())
+            corpus_id = corpus_item['_id']
+            # Extract table_id from chunk_id (format: table_id_chunk_type)
+            if 'table_id' in corpus_item:
+                table_id = corpus_item['table_id']
+                valid_table_ids.add(table_id)
+    
+    print(f"✅ Found {len(valid_table_ids)} tables with chunks")
+    
+    # Filter queries
+    valid_queries = []
+    total_queries = 0
+    with open(queries_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            query_data = json.loads(line.strip())
+            total_queries += 1
+            query_id = query_data['_id']
+            
+            if query_id in valid_table_ids:
+                valid_queries.append(query_data)
+    
+    # Filter qrels
+    valid_qrels = []
+    valid_query_ids = {q['_id'] for q in valid_queries}
+    with open(qrels_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            parts = line.strip().split('\t')
+            if len(parts) >= 4:
+                query_id = parts[0]
+                if query_id in valid_query_ids:
+                    valid_qrels.append(line.strip())
+    
+    # Filter corpus
+    valid_corpus = []
+    expected_corpus_ids = set()
+    with open(corpus_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            corpus_item = json.loads(line.strip())
+            corpus_id = corpus_item['_id']
+            # Only keep chunks whose table_id has a corresponding query
+            table_id = corpus_item.get('table_id', '')
+            if table_id in valid_query_ids:
+                valid_corpus.append(corpus_item)
+                expected_corpus_ids.add(corpus_id)
+    
+    # Create filtered files
+    filtered_dir = output_dir / "filtered"
+    filtered_dir.mkdir(exist_ok=True)
+    
+    with open(filtered_dir / "queries.jsonl", 'w', encoding='utf-8') as f:
+        for query in valid_queries:
+            f.write(json.dumps(query, ensure_ascii=False) + '\n')
+    
+    with open(filtered_dir / "qrels.tsv", 'w', encoding='utf-8') as f:
+        for qrel in valid_qrels:
+            f.write(qrel + '\n')
+    
+    with open(filtered_dir / "corpus.jsonl", 'w', encoding='utf-8') as f:
+        for item in valid_corpus:
+            f.write(json.dumps(item, ensure_ascii=False) + '\n')
+    
+    # Replace original files with filtered ones
+    shutil.move(str(filtered_dir / "queries.jsonl"), str(queries_file))
+    shutil.move(str(filtered_dir / "qrels.tsv"), str(qrels_file))
+    shutil.move(str(filtered_dir / "corpus.jsonl"), str(corpus_file))
+    
+    # Remove temporary directory
+    filtered_dir.rmdir()
+    
+    stats = {
+        'original_queries': total_queries,
+        'filtered_queries': len(valid_queries),
+        'removed_queries': total_queries - len(valid_queries),
+        'retention_rate': len(valid_queries) / total_queries if total_queries > 0 else 0
+    }
+    
+    print(f"📊 Filtering Results:")
+    print(f"  Original queries: {stats['original_queries']}")
+    print(f"  Filtered queries: {stats['filtered_queries']}")
+    print(f"  Removed queries: {stats['removed_queries']}")
+    print(f"  Retention rate: {stats['retention_rate']*100:.1f}%")
+    
+    return stats
 
 
 def normalize_text(chunk: Dict) -> str | None:
@@ -125,6 +232,13 @@ def main() -> None:
         raise SystemExit("No tables loaded from processed_tables.jsonl.")
     write_beir_files(args.output_dir, corpus, tables, table_to_chunks)
     print(f"Wrote {len(corpus)} documents, {len(tables)} queries to {args.output_dir} in BEIR format.")
+    
+    # Automatically filter the dataset to remove queries without table chunks
+    filter_stats = filter_dataset_for_chunks(args.output_dir, args.chunk_types)
+    
+    print(f"\n✅ Final dataset: {filter_stats['filtered_queries']} queries with table chunks")
+    if filter_stats['removed_queries'] > 0:
+        print(f"🗑️  Removed {filter_stats['removed_queries']} queries without table chunks")
 
 
 if __name__ == "__main__":
