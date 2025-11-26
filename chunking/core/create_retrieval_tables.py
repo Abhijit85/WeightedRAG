@@ -31,7 +31,7 @@ def create_enhanced_retrieval_tables(max_entries=None):
     table_processor = TableProcessor(timeout_seconds=5)  # Increased timeout for full dataset
     
     # Setup paths
-    input_file = Path("../../datasets/nq-table/nq_table_full_extraction.jsonl")
+    input_file = Path("datasets/nq-table/nq_table_full_extraction.jsonl")
     output_dir = Path("retrieval_tables")
     output_dir.mkdir(exist_ok=True)
     
@@ -39,7 +39,9 @@ def create_enhanced_retrieval_tables(max_entries=None):
     chunk_files = {
         'pure_table': output_dir / "chunks_pure_table.jsonl", 
         'table_row': output_dir / "chunks_table_row.jsonl",
-        'table_sample': output_dir / "chunks_table_sample.jsonl"
+        'table_column': output_dir / "chunks_table_column.jsonl",
+        'sliding_window': output_dir / "chunks_sliding_window.jsonl",
+        'table_structure': output_dir / "chunks_table_structure.jsonl"
     }
     
     # Combined file for backward compatibility
@@ -183,7 +185,11 @@ def create_enhanced_retrieval_tables(max_entries=None):
         print(f"Failed: {stats['failed']} entries")
         print(f"Success rate: {stats['processed']/(stats['processed']+stats['failed'])*100:.1f}%")
         print(f"Total chunks: {stats['total_chunks']}")
-        print(f"Avg chunks per table: {stats['total_chunks']/stats['processed']:.1f}")
+        
+        if stats['processed'] > 0:
+            print(f"Avg chunks per table: {stats['total_chunks']/stats['processed']:.1f}")
+        else:
+            print("No entries were successfully processed")
         print(f"Processing time: {total_time:.1f}s")
         print(f"Processing rate: {stats['processed']/total_time:.1f} entries/sec")
         
@@ -250,7 +256,6 @@ def create_enhanced_chunks(processed_table):
             'chunk_type': 'full_table',
             'table_id': table_id,
             'metadata': {
-                'original_question': question,  # Keep as metadata only
                 'answers': processed_table['gold_answers'],
                 'example_id': processed_table['example_id']
             }
@@ -286,7 +291,6 @@ def create_enhanced_chunks(processed_table):
             'chunk_type': 'table_only',
             'table_id': table_id,
             'metadata': {
-                'original_question': question,  # Keep as metadata only
                 'example_id': processed_table['example_id']
             }
         })
@@ -325,47 +329,52 @@ def create_enhanced_chunks(processed_table):
                 'chunk_type': 'table_row',
                 'table_id': table_id,
                 'metadata': {
-                    'original_question': question,  # Keep as metadata only
-                    'example_id': processed_table['example_id'],
-                    'row_index': i
-                }
-            })
-        
-        for i, row in enumerate(rows):
-            # Skip empty rows
-            if not row or not any(cell.strip() for cell in row if cell):
-                continue
-            
-            # Create row content with headers if available
-            if headers and len(headers) >= len(row):
-                row_pairs = []
-                for j, cell in enumerate(row):
-                    if j < len(headers) and cell and cell.strip():
-                        row_pairs.append(f"{headers[j]}: {cell}")
-                if row_pairs:
-                    row_content = ' | '.join(row_pairs)
-                else:
-                    continue  # Skip empty row
-            else:
-                # No headers or mismatched headers
-                non_empty_cells = [cell for cell in row if cell and cell.strip()]
-                if non_empty_cells:
-                    row_content = ' | '.join(non_empty_cells)
-                else:
-                    continue  # Skip empty row
-            
-            chunks.append({
-                'id': f"{table_id}_row_{i}",
-                'content': row_content,
-                'chunk_type': 'table_row',
-                'table_id': table_id,
-                'metadata': {
-                    'question': question,
                     'example_id': processed_table['example_id'],
                     'row_index': i
                 }
             })
     
+    # Column-wise chunks for tables with structured data
+    if structured_data.get('headers') and structured_data.get('rows'):
+        headers = structured_data['headers']
+        rows = structured_data['rows']
+        
+        for col_idx, header in enumerate(headers):
+            # Extract all values for this column
+            column_values = []
+            for row in rows[:100]:  # Limit to first 100 rows for performance
+                if col_idx < len(row) and row[col_idx] and row[col_idx].strip():
+                    column_values.append(row[col_idx].strip())
+            
+            if column_values:  # Only create chunk if column has values
+                # Remove duplicates while preserving order
+                unique_values = []
+                seen = set()
+                for val in column_values:
+                    if val not in seen:
+                        unique_values.append(val)
+                        seen.add(val)
+                        if len(unique_values) >= 20:  # Limit unique values shown
+                            break
+                
+                column_content = f"Column '{header}': {' | '.join(unique_values)}"
+                if len(column_values) > len(unique_values):
+                    column_content += f" (showing {len(unique_values)} unique values out of {len(column_values)} total)"
+                
+                chunks.append({
+                    'id': f"{table_id}_column_{col_idx}",
+                    'content': column_content,
+                    'chunk_type': 'table_column',
+                    'table_id': table_id,
+                    'metadata': {
+                        'example_id': processed_table['example_id'],
+                        'column_index': col_idx,
+                        'column_name': header,
+                        'unique_values': len(unique_values),
+                        'total_values': len(column_values)
+                    }
+                })
+
     # NEW: Sliding window chunks for very long tables
     if linearized and len(linearized) > 3000:  # Only for long tables
         window_size = 2000
@@ -394,7 +403,6 @@ def create_enhanced_chunks(processed_table):
                 'chunk_type': 'sliding_window',
                 'table_id': table_id,
                 'metadata': {
-                    'original_question': question,
                     'example_id': processed_table['example_id'],
                     'window_number': window_num,
                     'start_position': start,
@@ -445,18 +453,78 @@ def create_enhanced_chunks(processed_table):
         import json
         sample_content = json.dumps(table_json, ensure_ascii=False, separators=(',', ':'))
         
+        # Add table sample chunk
         chunks.append({
             'id': f"{table_id}_sample",
             'content': sample_content,
             'chunk_type': 'table_sample',
             'table_id': table_id,
             'metadata': {
-                'original_question': question,
                 'example_id': processed_table['example_id'],
                 'total_rows': len(rows),
                 'sample_rows': table_json["showing_rows"],
                 'format': 'json',
                 'structure': 'headers_with_sample_rows'
+            }
+        })
+        
+    # NEW: Table Structure chunk for schema understanding (works for all tables with headers)
+    if structured_data.get('headers'):
+        headers = structured_data['headers']
+        rows = structured_data.get('rows', [])
+        
+        # Analyze column types and patterns
+        columns_info = {}
+        for i, header in enumerate(headers[:10]):  # Limit to 10 columns for conciseness
+            column_values = []
+            for row in rows[:20]:  # Sample from first 20 rows
+                if i < len(row) and row[i] and row[i].strip():
+                    column_values.append(row[i].strip())
+            
+            # Determine data type and patterns
+            col_info = {
+                'samples': column_values[:3]  # First 3 non-empty values
+            }
+            
+            # Simple type detection
+            if column_values:
+                numeric_count = sum(1 for v in column_values if v.replace('.', '').replace('-', '').isdigit())
+                if numeric_count > len(column_values) * 0.7:
+                    col_info['type'] = 'numeric'
+                elif any(len(v) > 50 for v in column_values):
+                    col_info['type'] = 'text'
+                else:
+                    col_info['type'] = 'categorical'
+            
+            columns_info[header] = col_info
+        
+        # Create structure information
+        structure_data = {
+            'columns': columns_info,
+            'rows': len(rows),
+            'patterns': []
+        }
+        
+        # Add pattern tags based on analysis
+        if len(headers) > 5:
+            structure_data['patterns'].append('wide')
+        if len(rows) > 50:
+            structure_data['patterns'].append('large')
+        if any('id' in h.lower() for h in headers):
+            structure_data['patterns'].append('keyed')
+        
+        structure_content = json.dumps(structure_data, ensure_ascii=False, separators=(',', ':'))
+        
+        chunks.append({
+            'id': f"{processed_table['example_id']}_structure",
+            'content': structure_content,
+            'chunk_type': 'table_structure',
+            'table_id': table_id,
+            'metadata': {
+                'example_id': processed_table['example_id'],
+                'num_columns': len(columns_info),
+                'total_columns': len(headers),
+                'patterns': structure_data['patterns']
             }
         })
     
@@ -496,7 +564,9 @@ def main():
             'full_table': "chunks_full_table.jsonl",
             'pure_table': "chunks_pure_table.jsonl", 
             'table_only': "chunks_table_only.jsonl",
-            'table_row': "chunks_table_row.jsonl"
+            'table_row': "chunks_table_row.jsonl",
+            'table_column': "chunks_table_column.jsonl",
+            'table_structure': "chunks_table_structure.jsonl"
         }
         
         print(f"\nSample chunk content by type:")

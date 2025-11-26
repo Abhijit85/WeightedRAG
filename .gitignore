@@ -13,3 +13,6 @@ datasets/nq-table/
 chunking/core/retrieval_tables/*
 
 retrieval_tables/*
+
+# Claude AI conversation files
+*_*.md

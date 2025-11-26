@@ -196,34 +196,15 @@ class TableProcessor:
             
             if table:
                 rows = table.find_all('tr')[:50]  # Limit rows
-                headers = []
-                data_rows = []
                 
-                for i, row in enumerate(rows):
-                    cells = row.find_all(['td', 'th'])
-                    if not cells:
-                        continue
-                        
-                    cell_texts = []
-                    for cell in cells[:10]:  # Limit cells
-                        text = self._clean_text_safe(cell.get_text())
-                        cell_texts.append(text)
+                # Detect table type: infobox vs data table
+                is_infobox = self._detect_infobox_pattern(rows)
+                
+                if is_infobox:
+                    return self._parse_infobox_table(rows)
+                else:
+                    return self._parse_data_table(rows)
                     
-                    # Determine if header row
-                    if i == 0 or (cells and cells[0].name == 'th'):
-                        headers.extend([t for t in cell_texts if t])
-                    else:
-                        if any(cell_texts):  # Only add non-empty rows
-                            data_rows.append(cell_texts)
-                
-                return {
-                    'type': 'table',
-                    'headers': headers[:10],  # Limit headers
-                    'rows': data_rows[:50],   # Limit rows
-                    'num_rows': len(data_rows),
-                    'num_cols': max(len(row) for row in data_rows) if data_rows else 0,
-                    'source': 'soup'
-                }
             else:
                 return {
                     'type': 'text',
@@ -277,3 +258,85 @@ class TableProcessor:
         """Generate unique table ID"""
         content = f"{entry['example_id']}_{entry['question']}"
         return hashlib.md5(content.encode('utf-8')).hexdigest()[:12]
+
+    def _detect_infobox_pattern(self, rows) -> bool:
+        """Detect if table is an infobox (key-value pairs) vs data table"""
+        if len(rows) < 3:
+            return False
+            
+        # Check pattern: if most rows have exactly 2 cells with first being <th>
+        th_first_count = 0
+        two_cell_count = 0
+        
+        for row in rows[:10]:  # Check first 10 rows
+            cells = row.find_all(['td', 'th'])
+            if len(cells) == 2 and cells[0].name == 'th':
+                th_first_count += 1
+                two_cell_count += 1
+            elif len(cells) == 2:
+                two_cell_count += 1
+        
+        # If 70%+ of rows follow <th><td> pattern, it's likely an infobox
+        if len(rows) > 0:
+            th_pattern_ratio = th_first_count / min(len(rows), 10)
+            return th_pattern_ratio > 0.7
+        
+        return False
+    
+    def _parse_infobox_table(self, rows):
+        """Parse infobox-style table (property-value pairs)"""
+        headers = []
+        data_rows = []
+        
+        for row in rows:
+            cells = row.find_all(['td', 'th'])
+            if len(cells) >= 2:
+                # Extract property name and value
+                prop_name = self._clean_text_safe(cells[0].get_text())
+                prop_value = self._clean_text_safe(cells[1].get_text())
+                
+                if prop_name.strip():  # Only add if property name exists
+                    headers.append(prop_name.strip())
+                    data_rows.append([prop_value.strip() if prop_value else ''])
+        
+        return {
+            'type': 'infobox',
+            'headers': headers[:10],  # Limit headers
+            'rows': data_rows[:10],   # Limit rows
+            'num_rows': len(data_rows),
+            'num_cols': 1,  # Infobox always has 1 data column
+            'source': 'soup_infobox'
+        }
+    
+    def _parse_data_table(self, rows):
+        """Parse traditional data table (headers + data rows)"""
+        headers = []
+        data_rows = []
+        header_found = False
+        
+        for i, row in enumerate(rows):
+            cells = row.find_all(['td', 'th'])
+            if not cells:
+                continue
+                
+            cell_texts = []
+            for cell in cells[:10]:  # Limit cells
+                text = self._clean_text_safe(cell.get_text())
+                cell_texts.append(text)
+            
+            # First row with <th> tags or first row becomes headers
+            if not header_found and (i == 0 or any(cell.name == 'th' for cell in cells)):
+                headers = [t for t in cell_texts if t.strip()]
+                header_found = True
+            else:
+                if any(t.strip() for t in cell_texts):  # Only add non-empty rows
+                    data_rows.append(cell_texts)
+        
+        return {
+            'type': 'table',
+            'headers': headers[:10],  # Limit headers
+            'rows': data_rows[:50],   # Limit rows
+            'num_rows': len(data_rows),
+            'num_cols': max(len(row) for row in data_rows) if data_rows else len(headers),
+            'source': 'soup_datatable'
+        }

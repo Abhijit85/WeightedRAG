@@ -139,9 +139,7 @@ Use this workflow to regenerate the NQ Tables dataset, convert it to BEIR format
    ```
 3. **Generate multi-granular chunks**
    ```bash
-   cd chunking/core
-   python create_retrieval_tables.py --max-entries 50000
-   cd ../..
+   python chunking/core/create_retrieval_tables.py 
    ```
 4. **Convert to BEIR split**
    ```bash
@@ -149,7 +147,7 @@ Use this workflow to regenerate the NQ Tables dataset, convert it to BEIR format
      --tables retrieval_tables/processed_tables.jsonl \
      --chunks retrieval_tables/retrieval_chunks.jsonl \
      --output-dir datasets/nq-table/beir \
-     --chunk-types table_row,table_sample,pure_table
+     --chunk-types table_row,pure_table,table_structure 
    ```
 5. **Run evaluation and append the log**
    ```bash
