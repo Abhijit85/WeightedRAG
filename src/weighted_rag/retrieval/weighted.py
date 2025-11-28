@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import json
+import math
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, List
+
+try:
+    import spacy
+    from spacy.lang.en import English
+    SPACY_AVAILABLE = True
+except ImportError:
+    SPACY_AVAILABLE = False
 
 from ..config import RetrievalConfig
 from ..index.multi_index import MultiStageVectorIndex, StageResult
@@ -19,6 +27,151 @@ def _parse_float(value: str, default: float = 0.0) -> float:
         return default
 
 
+class BM25Scorer:
+    """Enhanced BM25 scorer with improved tokenization, query term frequency weighting, and robust normalization."""
+    
+    def __init__(self, k1: float = 1.2, b: float = 0.75, epsilon: float = 0.25):
+        self.k1 = k1
+        self.b = b
+        self.epsilon = epsilon  # Smoothing parameter for unseen terms
+        self.corpus_tokens = []
+        self.doc_freqs = Counter()
+        self.doc_lens = []
+        self.avgdl = 0.0
+        self.N = 0
+        self.idf_cache = {}  # Cache IDF values for performance
+        self.stop_words = {
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 
+            'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 
+            'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should'
+        }
+        
+        # Initialize spaCy tokenizer
+        if SPACY_AVAILABLE:
+            try:
+                self.nlp = English()
+                # Add only tokenizer for better performance
+                self.nlp.add_pipe('tokenizer')
+            except Exception:
+                self.nlp = None
+        else:
+            self.nlp = None
+    
+    def tokenize(self, text: str) -> List[str]:
+        """Enhanced tokenization with punctuation handling, case normalization, and stop word removal."""
+        if not text or not text.strip():
+            return []
+        
+        # Use spaCy if available
+        if self.nlp:
+            try:
+                doc = self.nlp(text.lower())
+                tokens = [token.text for token in doc if not token.is_space and not token.is_punct]
+            except Exception:
+                # Fallback to regex-based tokenization
+                tokens = self._regex_tokenize(text)
+        else:
+            tokens = self._regex_tokenize(text)
+        
+        # Filter stop words and very short tokens
+        filtered_tokens = [
+            token for token in tokens 
+            if len(token) >= 2 and token not in self.stop_words
+        ]
+        
+        return filtered_tokens
+    
+    def _regex_tokenize(self, text: str) -> List[str]:
+        """Fallback regex-based tokenization."""
+        text = text.lower()
+        # Remove punctuation but keep alphanumeric and spaces
+        text = re.sub(r'[^\w\s]', ' ', text)
+        # Split and filter empty tokens
+        return [token.strip() for token in text.split() if token.strip()]
+    
+    def fit(self, documents: List[str]):
+        """Fit BM25 parameters on a corpus with enhanced preprocessing."""
+        self.corpus_tokens = []
+        self.doc_freqs = Counter()
+        self.doc_lens = []
+        self.idf_cache = {}
+        
+        valid_documents = [doc for doc in documents if doc and doc.strip()]
+        if not valid_documents:
+            self.N = 0
+            self.avgdl = 0.0
+            return
+        
+        for doc in valid_documents:
+            tokens = self.tokenize(doc)
+            self.corpus_tokens.append(tokens)
+            self.doc_lens.append(len(tokens))
+            
+            # Count unique terms in document
+            unique_tokens = set(tokens)
+            for token in unique_tokens:
+                self.doc_freqs[token] += 1
+        
+        self.N = len(valid_documents)
+        self.avgdl = sum(self.doc_lens) / max(self.N, 1)
+        
+        # Precompute IDF values for performance
+        for term, df in self.doc_freqs.items():
+            if df > 0:
+                # Ensure IDF is always positive by using max(0.1, ...)
+                idf_value = math.log(max(1.1, (self.N - df + 0.5) / (df + 0.5)))
+                self.idf_cache[term] = max(0.1, idf_value)  # Ensure minimum positive IDF
+    
+    def score(self, query: str, document: str) -> float:
+        """Calculate enhanced BM25 score with query term frequency weighting."""
+        if self.N == 0 or not query.strip() or not document.strip():
+            return 0.0
+            
+        query_tokens = self.tokenize(query)
+        doc_tokens = self.tokenize(document)
+        
+        if not query_tokens or not doc_tokens:
+            return 0.0
+        
+        doc_len = len(doc_tokens)
+        doc_term_freqs = Counter(doc_tokens)
+        query_term_freqs = Counter(query_tokens)  # Consider query term frequency
+        
+        score = 0.0
+        for term, qtf in query_term_freqs.items():
+            tf = doc_term_freqs.get(term, 0)  # Get term frequency, 0 if not found
+            
+            if tf > 0:  # Term found in document
+                df = self.doc_freqs.get(term, 0)
+                
+                if df > 0 and term in self.idf_cache:
+                    # Use cached IDF
+                    idf = self.idf_cache[term]
+                    
+                    # BM25 with query term frequency weighting
+                    tf_component = (tf * (self.k1 + 1)) / (tf + self.k1 * (1 - self.b + self.b * doc_len / self.avgdl))
+                    qtf_component = (qtf * (self.k1 + 1)) / (qtf + self.k1)  # Query term frequency weighting
+                    
+                    score += idf * tf_component * qtf_component
+                else:
+                    # Smoothing for terms in document but not in training vocabulary
+                    score += self.epsilon * math.log(self.N + 1) * qtf
+            else:
+                # Term not in document - no contribution to score
+                # This is correct BM25 behavior - only matching terms contribute
+                pass
+        
+        return score
+    
+    def normalized_score(self, query: str, document: str) -> float:
+        """Return BM25 score normalized to [0,1] range using sigmoid."""
+        raw_score = self.score(query, document)
+        # Log-sigmoid normalization with adaptive scaling
+        scale = 5.0 + math.log(self.avgdl + 1)  # Adaptive scaling based on corpus
+        normalized = 1.0 / (1.0 + math.exp(-raw_score / scale))
+        return normalized
+
+
 class WeightedRetriever:
     """Implements the Matryoshka-aware weighted scoring strategy."""
 
@@ -27,6 +180,10 @@ class WeightedRetriever:
         self.index = index
         self.stage_weights = {stage.name: stage.weight for stage in config.stages}
         self.stage_dims = {stage.name: stage.dimension for stage in config.stages}
+        
+        # Initialize BM25 scorer
+        self.bm25_scorer = BM25Scorer()
+        self._bm25_fitted = False
 
     def _metadata_scores(self, chunk: Chunk) -> Dict[str, float]:
         meta = chunk.metadata
@@ -40,6 +197,23 @@ class WeightedRetriever:
             "gamma_domain": domain,
             "delta_structure": structure,
         }
+    
+    def _ensure_bm25_fitted(self):
+        """Ensure BM25 scorer is fitted on the corpus."""
+        if not self._bm25_fitted:
+            # Get all chunk texts from index
+            all_chunks = self.index.get_all_chunks()
+            documents = [chunk.text for chunk in all_chunks]
+            
+            if documents:
+                self.bm25_scorer.fit(documents)
+                self._bm25_fitted = True
+    
+    def _compute_bm25_score(self, query: Query, chunk: Chunk) -> float:
+        """Compute normalized BM25 score for a query-chunk pair."""
+        self._ensure_bm25_fitted()
+        # Use the new normalized scoring method for better distribution
+        return self.bm25_scorer.normalized_score(query.text, chunk.text)
 
     def _combine_scores(self, stage_results: Dict[str, StageResult]) -> Dict[str, float]:
         combined: Dict[str, float] = defaultdict(float)
@@ -99,23 +273,43 @@ class WeightedRetriever:
     def retrieve(self, query: Query, stage_results: Dict[str, StageResult]) -> RetrievalResult:
         combined = self._combine_scores(stage_results)
 
+        # Calculate total weight for normalization
+        total_weight = (
+            self.config.lambda_similarity 
+            + self.config.alpha_reliability 
+            + self.config.beta_temporal 
+            + self.config.gamma_domain 
+            + self.config.delta_structure 
+            + self.config.epsilon_bm25
+        )
+        
         items: List[RetrievedChunk] = []
         for chunk_id, similarity in combined.items():
             chunk = self.index.get_chunk(chunk_id)
             meta_scores = self._metadata_scores(chunk)
+            
+            # Compute BM25 score (already normalized to [0,1])
+            bm25_score = self._compute_bm25_score(query, chunk)
+            
+            # Compute weighted similarity with normalized weights
             weighted_similarity = (
-                self.config.lambda_similarity * similarity
-                + self.config.alpha_reliability * meta_scores["alpha_reliability"]
-                + self.config.beta_temporal * meta_scores["beta_temporal"]
-                + self.config.gamma_domain * meta_scores["gamma_domain"]
-                + self.config.delta_structure * meta_scores["delta_structure"]
+                (self.config.lambda_similarity / total_weight) * similarity
+                + (self.config.alpha_reliability / total_weight) * meta_scores["alpha_reliability"]
+                + (self.config.beta_temporal / total_weight) * meta_scores["beta_temporal"]
+                + (self.config.gamma_domain / total_weight) * meta_scores["gamma_domain"]
+                + (self.config.delta_structure / total_weight) * meta_scores["delta_structure"]
+                + (self.config.epsilon_bm25 / total_weight) * bm25_score
             )
+            
+            # Add BM25 score to the scores dictionary
+            all_scores = {"combined": similarity, "bm25": bm25_score, "weighted": weighted_similarity, **meta_scores}
+            
             items.append(
                 RetrievedChunk(
                     chunk=chunk,
                     similarity=weighted_similarity,
                     rank=0,
-                    scores={"combined": similarity, **meta_scores},
+                    scores=all_scores,
                 )
             )
 

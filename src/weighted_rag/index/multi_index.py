@@ -103,6 +103,10 @@ class MultiStageVectorIndex:
 
     def get_chunk(self, chunk_id: str) -> Chunk:
         return self.chunk_store[chunk_id]
+    
+    def get_all_chunks(self) -> List[Chunk]:
+        """Get all stored chunks for corpus-level operations like BM25 fitting."""
+        return list(self.chunk_store.values())
 
     def search(self, stage_query_embeddings: Dict[str, Dict[int, Any]]) -> Dict[str, StageResult]:
         """Search using stage-specific query embeddings."""

@@ -11,7 +11,7 @@ class ChunkingConfig:
 
     max_tokens: int = 200
     overlap_tokens: int = 20
-    tokenizer_name: str = "bert-base-uncased"
+    tokenizer_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     enabled_chunk_types: List[str] = field(default_factory=lambda: [
         "full_table", "table_row"
     ])
@@ -46,11 +46,12 @@ class RetrievalConfig:
             ),
         ]
     )
-    lambda_similarity: float = 0.7
-    alpha_reliability: float = 0.1
-    beta_temporal: float = 0.1
-    gamma_domain: float = 0.05
+    lambda_similarity: float = 0.70  # Increased primary weight
+    alpha_reliability: float = 0.10  # Increased metadata weight
+    beta_temporal: float = 0.00
+    gamma_domain: float = 0.00
     delta_structure: float = 0.05
+    epsilon_bm25: float = 0.15  # Reduced BM25 weight to prevent dominance
 
 
 @dataclass

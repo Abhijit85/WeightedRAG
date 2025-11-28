@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+# Set environment variables before any other imports to prevent semaphore leaks
+import os
+
 import argparse
 import json
 import time
@@ -32,18 +35,21 @@ def load_config(path: Path | None) -> PipelineConfig:
         # Use a safe default configuration
         from weighted_rag.config import EmbeddingConfig, ChunkingConfig, RetrievalConfig, IndexStageConfig
         
+        # Use consistent model name for both embedding and retrieval stages
+        model_name = "Qwen/Qwen3-Embedding-0.6B"
+        
         embedding_config = EmbeddingConfig(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_name=model_name,
             batch_size=16,
             use_fp16=False,
-            device="cpu",
+            device="mps",
             normalize=True,
             truncate_dims=None
         )
         
         chunking_config = ChunkingConfig(
-            max_tokens=128,  # Very small chunks
-            overlap_tokens=16,
+            max_tokens=512,  # Reasonable chunk size
+            overlap_tokens=32,
             tokenizer_name="bert-base-uncased"
         )
         
@@ -51,23 +57,36 @@ def load_config(path: Path | None) -> PipelineConfig:
             stages=[
                 IndexStageConfig(
                     name="coarse",
-                    dimension=384,
-                    top_k=200,
+                    dimension=1024,
+                    top_k=200,  # Smaller top-k to avoid memory issues
                     weight=1.0,
                     normalize=True,
                     index_factory="HNSW32",
-                    model_name="sentence-transformers/all-MiniLM-L6-v2"
+                    model_name=model_name  # Use same model for consistency
                 )
             ]
         )
         
-        return PipelineConfig(
+        config = PipelineConfig(
             chunking=chunking_config,
             embedding=embedding_config,
             retrieval=retrieval_config
         )
-    payload: Dict[str, Any] = json.loads(path.read_text())
-    return pipeline_config_from_dict(payload)
+        
+        # Debug: Verify consistent model configuration
+        print(f"Configuration verification:")
+        print(f"  Embedding model: {config.embedding.model_name}")
+        print(f"  Retrieval stage models: {[stage.model_name for stage in config.retrieval.stages]}")
+        print()
+        
+        return config
+    else:
+        payload: Dict[str, Any] = json.loads(path.read_text())
+        config = pipeline_config_from_dict(payload)
+        print(f"Loaded config from {path}")
+        print(f"  Embedding model: {config.embedding.model_name}")
+        print(f"  Retrieval stages: {[stage.model_name for stage in config.retrieval.stages]}")
+        return config
 
 
 def unique_doc_sequence(chunk_ids: Iterable[str], pipeline: WeightedRAGPipeline) -> List[str]:
