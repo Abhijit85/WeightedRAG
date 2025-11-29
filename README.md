@@ -155,6 +155,36 @@ Use this workflow to regenerate the NQ Tables dataset, convert it to BEIR format
    python -m scripts.evaluate_retrieval --dataset-root datasets/nq-table/beir  --save-results outputs/nq_table_metrics.json
    ```
 
+   
+ 6. **Add Index Caching**
+     - Replace  existing `scripts/evaluate_retrieval.py` file with the cached version provided in this repository.
+
+
+8. **Run evaluation with automatic index caching**
+```bash
+   python -m scripts.evaluate_retrieval --dataset-root datasets/nq-table/beir --save-results outputs/nq_table_metrics.json
+```
+   
+   - **First run**: Builds and caches the vector index 
+   - **Subsequent runs**: Loads from cache instantly
+   - Cache automatically rebuilds when corpus or config changes
+
+
+---
+
+## Cache Location
+
+By default, indexes are cached in:
+```
+cache/indexes/nq-table/
+```
+
+Each cached index includes:
+- `index_<hash>.pkl` - The pickled vector index
+- `index_<hash>.json` - Metadata (creation time, document count, etc.)
+
+---
+
 The detailed checklist lives in `evaluation_log.txt`. Each time you run the benchmark, append the stdout via `tee -a evaluation_log.txt` and verify the manual checks at the top of that file.
 
 ## Custom Configuration
