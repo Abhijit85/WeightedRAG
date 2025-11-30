@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional, Type, TypeVar, get_args, get_origi
 @dataclass  
 class ChunkingConfig:
 
-    max_tokens: int = 200
-    overlap_tokens: int = 20
+    max_tokens: int = 512
+    overlap_tokens: int = 32
     tokenizer_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     enabled_chunk_types: List[str] = field(default_factory=lambda: [
         "full_table", "table_row"
@@ -90,10 +90,10 @@ class PipelineConfig:
 
 @dataclass
 class CrossEncoderConfig:
-    model_name: str = "cross-encoder/ms-marco-MiniLM-L-12-v2"
+    model_name: str = "cross-encoder/ms-marco-MiniLM-L12-v2"
     device: str = "cpu"
-    batch_size: int = 16
-    top_n: int = 5
+    batch_size: int = 32
+    top_n: int = 10
 
 
 T = TypeVar("T")

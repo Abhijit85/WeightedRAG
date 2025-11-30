@@ -65,7 +65,7 @@ class MultiModelEmbedder:
         model = self._get_model(model_name)
         if model is None:
             return self._hash_encode(texts)
-        
+                               
         vectors = model.encode(
             list(texts),
             batch_size=self.config.batch_size,

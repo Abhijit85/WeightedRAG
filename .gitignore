@@ -16,3 +16,6 @@ retrieval_tables/*
 
 # Claude AI conversation files
 *_*.md
+
+cacha/
+outputs/
