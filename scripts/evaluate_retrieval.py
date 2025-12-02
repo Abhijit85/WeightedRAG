@@ -78,7 +78,8 @@ def load_config(path: Path | None) -> PipelineConfig:
             chunking=chunking_config,
             embedding=embedding_config,
             retrieval=retrieval_config,
-            cross_encoder= None
+            cross_encoder= None,
+            use_graph_rerank = True
         )
         
         # Debug: Verify consistent model configuration
@@ -87,7 +88,7 @@ def load_config(path: Path | None) -> PipelineConfig:
         print(f"  Retrieval stage models: {[stage.model_name for stage in config.retrieval.stages]}")
         print(f"  Cross-encoder model: {config.cross_encoder.model_name if config.cross_encoder else 'None'}")
         print(f"  Cross-encoder reranking: {'Enabled' if config.cross_encoder else 'Disabled'}")
-        print()
+        print(f" graphreranker:{config.use_graph_rerank}")
         
         return config
     else:

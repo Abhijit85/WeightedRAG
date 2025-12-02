@@ -46,12 +46,12 @@ class RetrievalConfig:
             ),
         ]
     )
-    lambda_similarity: float = 0.70  # Increased primary weight
-    alpha_reliability: float = 0.10  # Increased metadata weight
+    lambda_similarity: float = .85  # Increased primary weight
+    alpha_reliability: float = 0.00  # Increased metadata weight
     beta_temporal: float = 0.00
     gamma_domain: float = 0.00
     delta_structure: float = 0.05
-    epsilon_bm25: float = 0.15  # Reduced BM25 weight to prevent dominance
+    epsilon_bm25: float = 0.10  # Reduced BM25 weight to prevent dominance
 
 
 @dataclass
@@ -94,6 +94,9 @@ class CrossEncoderConfig:
     device: str = "cpu"
     batch_size: int = 32
     top_n: int = 10
+    use_batch_processing: bool = True  # Disable if padding issues persist
+    force_single_predictions: bool = False  # Force single prediction mode
+
 
 
 T = TypeVar("T")

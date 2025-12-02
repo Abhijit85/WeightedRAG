@@ -14,6 +14,9 @@ from tqdm import tqdm
 
 from weighted_rag import WeightedRAGPipeline
 from weighted_rag.config import PipelineConfig, pipeline_config_from_dict
+from weighted_rag.retrieval.cross_encoder import CrossEncoderReranker
+from weighted_rag.retrieval.graph import GraphReranker
+from weighted_rag.retrieval.weighted import WeightedRetriever
 from weighted_rag.evaluation.loader import load_beir_split
 from weighted_rag.evaluation.metrics import mean_reciprocal_rank, ndcg_at_k, precision_at_k, recall_at_k
 from weighted_rag.types import Query
@@ -23,7 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate retrieval on BEIR-style datasets.")
     parser.add_argument("--dataset-root", type=Path, required=True, help="Path to BEIR split (contains corpus.jsonl, queries.jsonl, qrels.tsv).")
     parser.add_argument("--config", type=Path, help="Optional JSON config path.")
-    parser.add_argument("--ks", type=str, default="1,3,5,10", help="Comma-separated list of cutoff values for metrics.")
+    parser.add_argument("--ks", type=str, default="1,3,5,10,100", help="Comma-separated list of cutoff values for metrics.")
     parser.add_argument("--max-queries", type=int, help="Limit evaluation to the first N queries.")
     parser.add_argument("--save-results", type=Path, help="Optional path to dump per-query results JSON.")
     parser.add_argument("--cache-dir", type=Path, default=Path("cache/indexes"), help="Directory to cache vector indexes.")
@@ -31,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-cache", action="store_true", help="Disable caching entirely.")
     return parser.parse_args()
 
-
+#  python -m scripts.evaluate_retrieval_cache --dataset-root datasets/nq-table/beir  --save-results outputs/nq_table_metrics.json --cache-dir cache/pure_table
 def load_config(path: Path | None) -> PipelineConfig:
     if path is None:
         # Use a safe default configuration
@@ -70,7 +73,7 @@ def load_config(path: Path | None) -> PipelineConfig:
         )
                 # Configure cross-encoder reranker
         cross_encoder_config = CrossEncoderConfig(
-            model_name="cross-encoder/ms-marco-MiniLM-L12-v2",
+            model_name="cross-encoder/stsb-roberta-large",
             device="cuda",
             batch_size=64,
             top_n=10  # Rerank top 10 results
@@ -80,9 +83,8 @@ def load_config(path: Path | None) -> PipelineConfig:
             chunking=chunking_config,
             embedding=embedding_config,
             retrieval=retrieval_config,
-            cross_encoder= None
+            cross_encoder= cross_encoder_config,
         )
-        
         # Debug: Verify consistent model configuration
         print(f"Configuration verification:")
         print(f"  Embedding model: {config.embedding.model_name}")
@@ -129,7 +131,8 @@ def compute_cache_key(dataset_root: Path, config: PipelineConfig) -> str:
 
 def get_cache_path(cache_dir: Path, dataset_name: str, cache_key: str) -> Path:
     """Get the cache file path for a given cache key."""
-    return cache_dir / dataset_name / f"index_{cache_key}.pkl"
+    fix_key = "0144c4dd5ec0538d"
+    return cache_dir / dataset_name / f"index_{fix_key}.pkl"
 
 
 def get_cache_metadata_path(cache_path: Path) -> Path:
@@ -316,7 +319,8 @@ def evaluate(
     print("=" * 60)
     
     pipeline = build_or_load_index(dataset_root, config, cache_dir, force_reindex, use_cache)
-
+    pipeline.retriever = WeightedRetriever(config.retrieval, pipeline.index)
+    pipeline.cross_encoder_reranker = CrossEncoderReranker(config.cross_encoder) if config.cross_encoder else None
     stage_names = [stage.name for stage in config.retrieval.stages]
     stage_metrics: Dict[str, Dict[str, float]] = {name: {} for name in stage_names}
     final_metrics: Dict[str, float] = {}
@@ -425,6 +429,8 @@ def main() -> None:
     args = parse_args()
     ks = sorted({int(value) for value in args.ks.split(",") if value.strip()})
     config = load_config(args.config)
+    print(f"{config.retrieval.lambda_similarity=}")
+    print(f"{config.retrieval.epsilon_bm25=}")
     evaluate(
         args.dataset_root, 
         config, 

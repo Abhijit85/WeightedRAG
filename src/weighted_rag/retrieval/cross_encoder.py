@@ -22,6 +22,7 @@ class CrossEncoderReranker:
         if CrossEncoder is not None:
             try:
                 self._model = CrossEncoder(config.model_name, device=config.device)
+                print("reranker loaded")
             except Exception:
                 self._model = None
 
