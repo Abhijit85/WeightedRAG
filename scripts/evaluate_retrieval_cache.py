@@ -41,13 +41,13 @@ def load_config(path: Path | None) -> PipelineConfig:
         from weighted_rag.config import EmbeddingConfig, ChunkingConfig, RetrievalConfig, IndexStageConfig,CrossEncoderConfig
         
         # Use consistent model name for both embedding and retrieval stages
-        model_name = "Qwen/Qwen3-Embedding-4B"
+        model_name = "sentence-transformers/all-MiniLM-L6-v2"
         
         embedding_config = EmbeddingConfig(
             model_name=model_name,
-            batch_size=64,
+            batch_size=32,
             use_fp16=False,
-            device="cuda",
+            device="mps",
             normalize=True,
             truncate_dims=None
         )
@@ -55,14 +55,14 @@ def load_config(path: Path | None) -> PipelineConfig:
         chunking_config = ChunkingConfig(
             max_tokens=480,  # Reasonable chunk size
             overlap_tokens=32,
-            tokenizer_name="Qwen/Qwen3-Embedding-4B"
+            tokenizer_name="sentence-transformers/all-MiniLM-L6-v2"
         )
         
         retrieval_config = RetrievalConfig(
             stages=[
                 IndexStageConfig(
                     name="coarse",
-                    dimension=2560,
+                    dimension=384,
                     top_k=200,  # Smaller top-k to avoid memory issues
                     weight=1.0,
                     normalize=True,
@@ -71,20 +71,14 @@ def load_config(path: Path | None) -> PipelineConfig:
                 )
             ]
         )
-                # Configure cross-encoder reranker
-        cross_encoder_config = CrossEncoderConfig(
-            model_name="cross-encoder/stsb-roberta-large",
-            device="cuda",
-            batch_size=64,
-            top_n=10  # Rerank top 10 results
-        )
-        
+
         config = PipelineConfig(
             chunking=chunking_config,
             embedding=embedding_config,
             retrieval=retrieval_config,
-            cross_encoder= cross_encoder_config,
+            cross_encoder= None,
         )
+
         # Debug: Verify consistent model configuration
         print(f"Configuration verification:")
         print(f"  Embedding model: {config.embedding.model_name}")
@@ -132,7 +126,7 @@ def compute_cache_key(dataset_root: Path, config: PipelineConfig) -> str:
 def get_cache_path(cache_dir: Path, dataset_name: str, cache_key: str) -> Path:
     """Get the cache file path for a given cache key."""
     fix_key = "0144c4dd5ec0538d"
-    return cache_dir / dataset_name / f"index_{fix_key}.pkl"
+    return cache_dir / dataset_name / f"index_{cache_key}.pkl"
 
 
 def get_cache_metadata_path(cache_path: Path) -> Path:
@@ -231,7 +225,7 @@ def build_index(split: Any, pipeline: WeightedRAGPipeline) -> int:
     print(f"Indexing {len(documents)} documents from corpus...")
     
     # Process documents in very small batches to show progress
-    batch_size = 64
+    batch_size = 16
     total_chunks = 0
     
     with tqdm(total=len(documents), desc="Processing documents", unit="docs") as pbar:

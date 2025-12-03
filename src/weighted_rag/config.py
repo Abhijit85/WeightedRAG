@@ -57,7 +57,7 @@ class RetrievalConfig:
 @dataclass
 class EmbeddingConfig:
     model_name: str = "sentence-transformers/embedding-matryoshka"
-    device: str = "cuda"
+    device: str = "mps"
     batch_size: int = 64
     normalize: bool = True
     truncate_dims: Optional[List[int]] = None
