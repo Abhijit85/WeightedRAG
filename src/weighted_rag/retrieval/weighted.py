@@ -18,6 +18,7 @@ except ImportError:
 from ..config import RetrievalConfig
 from ..index.multi_index import MultiStageVectorIndex, StageResult
 from ..types import Chunk, Query, RetrievedChunk, RetrievalResult
+from .structural import StructuralSimilarityScorer
 
 
 def _parse_float(value: str, default: float = 0.0) -> float:
@@ -184,18 +185,47 @@ class WeightedRetriever:
         # Initialize BM25 scorer
         self.bm25_scorer = BM25Scorer()
         self._bm25_fitted = False
+        
+        # Initialize structural similarity scorer if enabled
+        self.structural_scorer = None
+        if (config.enable_structural_similarity and 
+            hasattr(config, 'structural_chunks_path') and 
+            config.structural_chunks_path):
+            try:
+                # We'll pass the embedder from the pipeline when it becomes available
+                # For now, initialize with None and set it later
+                self.structural_scorer = None
+                self._structural_enabled = True
+            except Exception as e:
+                print(f"Warning: Failed to initialize structural similarity scorer: {e}")
+                self._structural_enabled = False
+        else:
+            self._structural_enabled = False
+
+    def set_embedder(self, embedder):
+        """Set the embedder for structural similarity scoring."""
+        if (self._structural_enabled and 
+            hasattr(self.config, 'structural_chunks_path') and 
+            self.config.structural_chunks_path):
+            try:
+                self.structural_scorer = StructuralSimilarityScorer(
+                    embedding_model=embedder,
+                    structural_chunks_path=self.config.structural_chunks_path,
+                    cache_dir=getattr(self.config, 'structural_cache_dir', None)
+                )
+            except Exception as e:
+                print(f"Warning: Failed to initialize structural similarity scorer: {e}")
+                self.structural_scorer = None
 
     def _metadata_scores(self, chunk: Chunk) -> Dict[str, float]:
         meta = chunk.metadata
         reliability = _parse_float(meta.get("reliability", "0"), 0.0)
         recency = _parse_float(meta.get("recency_score", "0"), 0.0)
         domain = _parse_float(meta.get("domain_score", "0"), 0.0)
-        structure = _parse_float(meta.get("structure_score", "0"), 0.0)
         return {
             "alpha_reliability": reliability,
             "beta_temporal": recency,
             "gamma_domain": domain,
-            "delta_structure": structure,
         }
     
     def _ensure_bm25_fitted(self):
@@ -279,7 +309,7 @@ class WeightedRetriever:
             + self.config.alpha_reliability 
             + self.config.beta_temporal 
             + self.config.gamma_domain 
-            + self.config.delta_structure 
+            + getattr(self.config, 'zeta_structural_similarity', 0.0)
             + self.config.epsilon_bm25
         )
         
@@ -291,27 +321,58 @@ class WeightedRetriever:
             # Compute BM25 score (already normalized to [0,1])
             bm25_score = self._compute_bm25_score(query, chunk)
             
+            # Create initial retrieved chunk for structural similarity computation
+            temp_retrieved_chunk = RetrievedChunk(
+                chunk=chunk,
+                similarity=similarity,
+                rank=0,
+                scores={}
+            )
+            
+            items.append(temp_retrieved_chunk)
+        
+        # Compute structural similarities for all chunks at once
+        structural_similarities = []
+        if (self.structural_scorer and 
+            getattr(self.config, 'zeta_structural_similarity', 0.0) > 0):
+            try:
+                structural_similarities = self.structural_scorer.compute_structural_similarity(query, items)
+            except Exception as e:
+                print(f"Warning: Structural similarity computation failed: {e}")
+                structural_similarities = [0.0] * len(items)
+        else:
+            structural_similarities = [0.0] * len(items)
+        
+        # Update items with final weighted scores
+        for i, item in enumerate(items):
+            chunk = item.chunk
+            similarity = item.similarity
+            meta_scores = self._metadata_scores(chunk)
+            bm25_score = self._compute_bm25_score(query, chunk)
+            structural_sim = structural_similarities[i] if i < len(structural_similarities) else 0.0
+            
             # Compute weighted similarity with normalized weights
             weighted_similarity = (
                 (self.config.lambda_similarity / total_weight) * similarity
                 + (self.config.alpha_reliability / total_weight) * meta_scores["alpha_reliability"]
                 + (self.config.beta_temporal / total_weight) * meta_scores["beta_temporal"]
                 + (self.config.gamma_domain / total_weight) * meta_scores["gamma_domain"]
-                + (self.config.delta_structure / total_weight) * meta_scores["delta_structure"]
+                + (getattr(self.config, 'zeta_structural_similarity', 0.0) / total_weight) * structural_sim
                 + (self.config.epsilon_bm25 / total_weight) * bm25_score
             )
             
-            # Add BM25 score to the scores dictionary
-            all_scores = {"combined": similarity, "bm25": bm25_score, "weighted": weighted_similarity, **meta_scores}
+            # Add all scores to the scores dictionary
+            all_scores = {
+                "combined": similarity, 
+                "bm25": bm25_score, 
+                "structural_similarity": structural_sim,
+                "weighted": weighted_similarity, 
+                **meta_scores
+            }
             
-            items.append(
-                RetrievedChunk(
-                    chunk=chunk,
-                    similarity=weighted_similarity,
-                    rank=0,
-                    scores=all_scores,
-                )
-            )
+            # Update the item
+            item.similarity = weighted_similarity
+            item.scores = all_scores
 
         items.sort(key=lambda item: item.similarity, reverse=True)
         for rank, item in enumerate(items, start=1):

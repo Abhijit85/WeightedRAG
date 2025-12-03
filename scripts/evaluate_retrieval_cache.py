@@ -313,7 +313,8 @@ def evaluate(
     print("=" * 60)
     
     pipeline = build_or_load_index(dataset_root, config, cache_dir, force_reindex, use_cache)
-    pipeline.retriever = WeightedRetriever(config.retrieval, pipeline.index)
+    # Don't overwrite the retriever - it's already properly configured with structural similarity
+    # pipeline.retriever = WeightedRetriever(config.retrieval, pipeline.index)  # REMOVED: This breaks structural similarity
     pipeline.cross_encoder_reranker = CrossEncoderReranker(config.cross_encoder) if config.cross_encoder else None
     stage_names = [stage.name for stage in config.retrieval.stages]
     stage_metrics: Dict[str, Dict[str, float]] = {name: {} for name in stage_names}

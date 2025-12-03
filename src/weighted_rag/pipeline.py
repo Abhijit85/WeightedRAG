@@ -30,6 +30,9 @@ class WeightedRAGPipeline:
         self.graph_reranker = GraphReranker() if config.use_graph_rerank else None
         self.cross_encoder_reranker = CrossEncoderReranker(config.cross_encoder) if config.cross_encoder else None
         self._chunk_count = 0
+        
+        # Set embedder for structural similarity
+        self.retriever.set_embedder(self.embedder)
 
     def ingest_path(self, path: Path, **kwargs) -> List[Document]:
         documents = load_documents(path, **kwargs)

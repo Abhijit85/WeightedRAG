@@ -46,12 +46,17 @@ class RetrievalConfig:
             ),
         ]
     )
-    lambda_similarity: float = .85  # Increased primary weight
-    alpha_reliability: float = 0.00  # Increased metadata weight
+    lambda_similarity: float = .60  # Primary weight (restored after removing delta_structure)
+    alpha_reliability: float = 0.00  # Metadata weight
     beta_temporal: float = 0.00
     gamma_domain: float = 0.00
-    delta_structure: float = 0.05
-    epsilon_bm25: float = 0.10  # Reduced BM25 weight to prevent dominance
+    zeta_structural_similarity: float = 0.20  # Embedding-based structural similarity
+    epsilon_bm25: float = 0.20  # BM25 weight
+    
+    # Structural similarity configuration
+    enable_structural_similarity: bool = True
+    structural_chunks_path: str = "datasets/nq-table/beir/chunks_table_structure.jsonl"
+    structural_cache_dir: str = "cache/structural_embeddings"
 
 
 @dataclass

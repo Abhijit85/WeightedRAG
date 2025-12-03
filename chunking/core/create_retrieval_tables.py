@@ -7,15 +7,64 @@ No complex chunking - just basic table processing that definitely won't get stuc
 import json
 import sys
 import time
+import re
 from pathlib import Path
 from tqdm import tqdm
 from datetime import datetime
+from bs4 import BeautifulSoup
 
 # Add paths for relative imports
 sys.path.append(str(Path(__file__).parent.parent))  # Add chunking directory
 sys.path.append(str(Path(__file__).parent.parent.parent))  # Add WeightedRAG root
 
 from chunking.processors.table_processor import TableProcessor
+
+def extract_table_header_from_html(html):
+    """
+    Extract table header/title from HTML.
+    Looks for caption, th elements with colspan, or prominent header elements.
+    """
+    if not html:
+        return None
+    
+    try:
+        # Handle the special case where attributes are formatted as Th_colspan instead of th colspan
+        html_normalized = re.sub(r'<(\w+)_([^>]+)>', r'<\1 \2>', html)
+        
+        soup = BeautifulSoup(html_normalized, 'html.parser')
+        
+        # Look for th elements with colspan (usually table titles)
+        th_with_colspan = soup.find_all('th', {'colspan': True})
+        if th_with_colspan:
+            for th in th_with_colspan:
+                text = th.get_text(separator=' ', strip=True)
+                # Clean up the text
+                text = re.sub(r'\s+', ' ', text)
+                if text and len(text) > 3:  # Filter very short headers
+                    return text
+        
+        # Look for caption
+        caption = soup.find('caption')
+        if caption:
+            text = caption.get_text(separator=' ', strip=True)
+            text = re.sub(r'\s+', ' ', text)
+            if text:
+                return text
+        
+        # Fallback: look for first th that might be a title
+        # But only if it's significantly longer than typical column headers
+        first_th = soup.find('th')
+        if first_th:
+            text = first_th.get_text(separator=' ', strip=True)
+            text = re.sub(r'\s+', ' ', text)
+            # If it's a long header, might be table title (but be conservative)
+            if text and len(text) > 20:
+                return text
+                
+    except Exception as e:
+        print(f'Warning: Error parsing HTML for header extraction: {e}')
+    
+    return None
 
 def create_enhanced_retrieval_tables(max_entries=None):
     """
@@ -499,7 +548,29 @@ def create_enhanced_chunks(processed_table):
             columns_info[header] = col_info
         
         # Create structure information
+        # Extract only the table description part, excluding question context to avoid information leakage
+        natural_desc = processed_table.get('natural_description', '')
+        if natural_desc and 'It relates to the question:' in natural_desc:
+            table_description = natural_desc.split('It relates to the question:')[0].strip().rstrip('.')
+        else:
+            table_description = f"This table contains {len(rows)} rows with {len(headers)} columns"
+            if headers:
+                table_description += f": {', '.join(headers[:3])}"
+                if len(headers) > 3:
+                    table_description += "..."
+        
+        # Try to extract table header from HTML for additional context
+        html_header = extract_table_header_from_html(processed_table.get('original_html'))
+        if html_header:
+            # Clean up the header - remove language variations and parentheticals for clarity
+            header_clean = re.sub(r'\s*\([^)]*\)\s*', ' ', html_header)  # Remove parentheticals
+            header_clean = re.sub(r'[^\x00-\x7F]+', ' ', header_clean)  # Remove non-ASCII characters
+            header_clean = re.sub(r'\s+', ' ', header_clean).strip()
+            if header_clean and len(header_clean) > 3 and header_clean.lower() not in table_description.lower():
+                table_description = f"{header_clean}. {table_description}"
+        
         structure_data = {
+            'table_description': table_description,
             'columns': columns_info,
             'rows': len(rows),
             'patterns': []
@@ -516,7 +587,7 @@ def create_enhanced_chunks(processed_table):
         structure_content = json.dumps(structure_data, ensure_ascii=False, separators=(',', ':'))
         
         chunks.append({
-            'id': f"{processed_table['example_id']}_structure",
+            'id': f"{table_id}_structure",
             'content': structure_content,
             'chunk_type': 'table_structure',
             'table_id': table_id,
