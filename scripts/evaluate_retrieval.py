@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+# Set environment variables before any other imports to prevent semaphore leaks
+import os
+
 import argparse
 import json
 import time
@@ -30,44 +33,71 @@ def parse_args() -> argparse.Namespace:
 def load_config(path: Path | None) -> PipelineConfig:
     if path is None:
         # Use a safe default configuration
-        from weighted_rag.config import EmbeddingConfig, ChunkingConfig, RetrievalConfig, IndexStageConfig
+        from weighted_rag.config import EmbeddingConfig, ChunkingConfig, RetrievalConfig, IndexStageConfig,CrossEncoderConfig
+        
+        # Use consistent model name for both embedding and retrieval stages
+        model_name = "Qwen/Qwen3-Embedding-4B"
         
         embedding_config = EmbeddingConfig(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
-            batch_size=16,
+            model_name=model_name,
+            batch_size=64,
             use_fp16=False,
-            device="cpu",
+            device="cuda",
             normalize=True,
             truncate_dims=None
         )
         
         chunking_config = ChunkingConfig(
-            max_tokens=128,  # Very small chunks
-            overlap_tokens=16,
-            tokenizer_name="bert-base-uncased"
+            max_tokens=480,  # Reasonable chunk size
+            overlap_tokens=32,
+            tokenizer_name="Qwen/Qwen3-Embedding-4B"
         )
         
         retrieval_config = RetrievalConfig(
             stages=[
                 IndexStageConfig(
                     name="coarse",
-                    dimension=384,
-                    top_k=200,
+                    dimension=2560,
+                    top_k=200,  # Smaller top-k to avoid memory issues
                     weight=1.0,
                     normalize=True,
                     index_factory="HNSW32",
-                    model_name="sentence-transformers/all-MiniLM-L6-v2"
+                    model_name=model_name  # Use same model for consistency
                 )
             ]
         )
+                # Configure cross-encoder reranker
+        cross_encoder_config = CrossEncoderConfig(
+            model_name="cross-encoder/ms-marco-MiniLM-L12-v2",
+            device="cuda",
+            batch_size=64,
+            top_n=10  # Rerank top 10 results
+        )
         
-        return PipelineConfig(
+        config = PipelineConfig(
             chunking=chunking_config,
             embedding=embedding_config,
-            retrieval=retrieval_config
+            retrieval=retrieval_config,
+            cross_encoder= None,
+            use_graph_rerank = True
         )
-    payload: Dict[str, Any] = json.loads(path.read_text())
-    return pipeline_config_from_dict(payload)
+        
+        # Debug: Verify consistent model configuration
+        print(f"Configuration verification:")
+        print(f"  Embedding model: {config.embedding.model_name}")
+        print(f"  Retrieval stage models: {[stage.model_name for stage in config.retrieval.stages]}")
+        print(f"  Cross-encoder model: {config.cross_encoder.model_name if config.cross_encoder else 'None'}")
+        print(f"  Cross-encoder reranking: {'Enabled' if config.cross_encoder else 'Disabled'}")
+        print(f" graphreranker:{config.use_graph_rerank}")
+        
+        return config
+    else:
+        payload: Dict[str, Any] = json.loads(path.read_text())
+        config = pipeline_config_from_dict(payload)
+        print(f"Loaded config from {path}")
+        print(f"  Embedding model: {config.embedding.model_name}")
+        print(f"  Retrieval stages: {[stage.model_name for stage in config.retrieval.stages]}")
+        return config
 
 
 def unique_doc_sequence(chunk_ids: Iterable[str], pipeline: WeightedRAGPipeline) -> List[str]:
@@ -114,7 +144,7 @@ def evaluate(dataset_root: Path, config: PipelineConfig, ks: List[int], max_quer
     print(f"Indexing {len(documents)} documents from corpus...")
     
     # Process documents in very small batches to show progress and avoid memory issues
-    batch_size = 5  # Process only 5 documents at a time
+    batch_size = 64  # Process only 5 documents at a time
     total_chunks = 0
     
     with tqdm(total=len(documents), desc="Processing documents", unit="docs") as pbar:

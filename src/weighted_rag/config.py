@@ -9,9 +9,9 @@ from typing import Any, Dict, List, Optional, Type, TypeVar, get_args, get_origi
 @dataclass  
 class ChunkingConfig:
 
-    max_tokens: int = 200
-    overlap_tokens: int = 20
-    tokenizer_name: str = "bert-base-uncased"
+    max_tokens: int = 512
+    overlap_tokens: int = 32
+    tokenizer_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     enabled_chunk_types: List[str] = field(default_factory=lambda: [
         "full_table", "table_row"
     ])
@@ -46,17 +46,23 @@ class RetrievalConfig:
             ),
         ]
     )
-    lambda_similarity: float = 0.7
-    alpha_reliability: float = 0.1
-    beta_temporal: float = 0.1
-    gamma_domain: float = 0.05
-    delta_structure: float = 0.05
+    lambda_similarity: float = .80  # Primary weight (restored after removing delta_structure)
+    alpha_reliability: float = 0.00  # Metadata weight
+    beta_temporal: float = 0.00
+    gamma_domain: float = 0.00
+    zeta_structural_similarity: float = 0.20  # Embedding-based structural similarity
+    epsilon_bm25: float = 0.00  # BM25 weight
+    
+    # Structural similarity configuration
+    enable_structural_similarity: bool = True
+    structural_chunks_path: str = "datasets/nq-table/beir/chunks_table_structure.jsonl"
+    structural_cache_dir: str = "cache/structural_embeddings"
 
 
 @dataclass
 class EmbeddingConfig:
     model_name: str = "sentence-transformers/embedding-matryoshka"
-    device: str = "cuda"
+    device: str = "mps"
     batch_size: int = 64
     normalize: bool = True
     truncate_dims: Optional[List[int]] = None
@@ -89,10 +95,13 @@ class PipelineConfig:
 
 @dataclass
 class CrossEncoderConfig:
-    model_name: str = "cross-encoder/ms-marco-MiniLM-L-12-v2"
+    model_name: str = "cross-encoder/ms-marco-MiniLM-L12-v2"
     device: str = "cpu"
-    batch_size: int = 16
-    top_n: int = 5
+    batch_size: int = 32
+    top_n: int = 10
+    use_batch_processing: bool = True  # Disable if padding issues persist
+    force_single_predictions: bool = False  # Force single prediction mode
+
 
 
 T = TypeVar("T")

@@ -1,0 +1,363 @@
+{
+  "dataset_root": "datasets/nq-table/beir",
+  "evaluated_queries": 5,
+  "metrics": {
+    "precision@1": 0.4,
+    "recall@1": 0.4,
+    "ndcg@1": 0.4,
+    "precision@3": 0.26666666666666666,
+    "recall@3": 0.8,
+    "ndcg@3": 0.6261859507142915,
+    "precision@5": 0.16,
+    "recall@5": 0.8,
+    "ndcg@5": 0.6261859507142915,
+    "precision@10": 0.1,
+    "recall@10": 1.0,
+    "ndcg@10": 0.6974273881358959,
+    "mrr": 0.6
+  },
+  "stage_metrics": {
+    "coarse": {
+      "precision@1": 0.4,
+      "recall@1": 0.4,
+      "ndcg@1": 0.4,
+      "precision@3": 0.3333333333333333,
+      "recall@3": 1.0,
+      "ndcg@3": 0.7785578521428747,
+      "precision@5": 0.2,
+      "recall@5": 1.0,
+      "ndcg@5": 0.7785578521428747,
+      "precision@10": 0.1,
+      "recall@10": 1.0,
+      "ndcg@10": 0.7785578521428747,
+      "mrr": 0.7
+    }
+  },
+  "queries": [
+    {
+      "query_id": "1bba6daf82a5",
+      "query": "when is the last episode of season 8 of the walking dead",
+      "qrels": {
+        "1bba6daf82a5_pure_table": 1.0
+      },
+      "final_ranked_docs": [
+        "2bbcb8d3e27c_pure_table",
+        "e493c9fead8f_pure_table",
+        "c4f367ca2745_pure_table",
+        "d815d31315ff_pure_table",
+        "faecb01245df_pure_table",
+        "1bba6daf82a5_pure_table",
+        "fbc87c413087_pure_table",
+        "4fdadf38def5_pure_table",
+        "89f32c4dcc55_pure_table",
+        "3632be1fe61e_pure_table"
+      ],
+      "metrics": {
+        "precision@1": 0.0,
+        "recall@1": 0.0,
+        "ndcg@1": 0.0,
+        "precision@3": 0.0,
+        "recall@3": 0.0,
+        "ndcg@3": 0.0,
+        "precision@5": 0.0,
+        "recall@5": 0.0,
+        "ndcg@5": 0.0,
+        "precision@10": 0.1,
+        "recall@10": 1.0,
+        "ndcg@10": 0.3562071871080222,
+        "mrr": 0.16666666666666666
+      },
+      "stage_details": {
+        "coarse": {
+          "retrieved": [
+            "1bba6daf82a5_pure_table",
+            "c4f367ca2745_pure_table",
+            "2bbcb8d3e27c_pure_table",
+            "d815d31315ff_pure_table",
+            "4fdadf38def5_pure_table",
+            "faecb01245df_pure_table",
+            "fbc87c413087_pure_table",
+            "e493c9fead8f_pure_table",
+            "8d138612c5d6_pure_table",
+            "2aca57f0f445_pure_table"
+          ],
+          "metrics": {
+            "precision@1": 1.0,
+            "recall@1": 1.0,
+            "ndcg@1": 1.0,
+            "precision@3": 0.3333333333333333,
+            "recall@3": 1.0,
+            "ndcg@3": 1.0,
+            "precision@5": 0.2,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "precision@10": 0.1,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "mrr": 1.0
+          }
+        }
+      }
+    },
+    {
+      "query_id": "b3a126708959",
+      "query": "how many season of the man in the high castle",
+      "qrels": {
+        "b3a126708959_pure_table": 1.0
+      },
+      "final_ranked_docs": [
+        "f5bd08a6b3c4_pure_table",
+        "b3a126708959_pure_table",
+        "8c75b70c1d82_pure_table",
+        "827cec3df37b_pure_table",
+        "dedafa9fd342_pure_table",
+        "89f32c4dcc55_pure_table",
+        "41ce50630717_pure_table",
+        "960ea52a92c7_pure_table",
+        "93c4989cb2a8_pure_table",
+        "e28184ada744_pure_table"
+      ],
+      "metrics": {
+        "precision@1": 0.0,
+        "recall@1": 0.0,
+        "ndcg@1": 0.0,
+        "precision@3": 0.3333333333333333,
+        "recall@3": 1.0,
+        "ndcg@3": 0.6309297535714575,
+        "precision@5": 0.2,
+        "recall@5": 1.0,
+        "ndcg@5": 0.6309297535714575,
+        "precision@10": 0.1,
+        "recall@10": 1.0,
+        "ndcg@10": 0.6309297535714575,
+        "mrr": 0.5
+      },
+      "stage_details": {
+        "coarse": {
+          "retrieved": [
+            "f5bd08a6b3c4_pure_table",
+            "b3a126708959_pure_table",
+            "41ce50630717_pure_table",
+            "8c75b70c1d82_pure_table",
+            "47afae717314_pure_table",
+            "95f182fd708d_pure_table",
+            "827cec3df37b_pure_table",
+            "e28184ada744_pure_table",
+            "bd98466db80a_pure_table",
+            "89f32c4dcc55_pure_table"
+          ],
+          "metrics": {
+            "precision@1": 0.0,
+            "recall@1": 0.0,
+            "ndcg@1": 0.0,
+            "precision@3": 0.3333333333333333,
+            "recall@3": 1.0,
+            "ndcg@3": 0.6309297535714575,
+            "precision@5": 0.2,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "precision@10": 0.1,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "mrr": 0.5
+          }
+        }
+      }
+    },
+    {
+      "query_id": "1101653fbdee",
+      "query": "who are the actors in fast and furious",
+      "qrels": {
+        "1101653fbdee_pure_table": 1.0
+      },
+      "final_ranked_docs": [
+        "1101653fbdee_pure_table",
+        "6af73efaae07_pure_table",
+        "a8ed383ac743_pure_table",
+        "be8de494bbcd_pure_table",
+        "1133a590cff4_pure_table",
+        "dbaeeb8523e6_pure_table",
+        "c4f367ca2745_pure_table",
+        "43e0e3fd051c_pure_table",
+        "da87e34210ac_pure_table",
+        "0aa1ed16a109_pure_table"
+      ],
+      "metrics": {
+        "precision@1": 1.0,
+        "recall@1": 1.0,
+        "ndcg@1": 1.0,
+        "precision@3": 0.3333333333333333,
+        "recall@3": 1.0,
+        "ndcg@3": 1.0,
+        "precision@5": 0.2,
+        "recall@5": 1.0,
+        "ndcg@5": 1.0,
+        "precision@10": 0.1,
+        "recall@10": 1.0,
+        "ndcg@10": 1.0,
+        "mrr": 1.0
+      },
+      "stage_details": {
+        "coarse": {
+          "retrieved": [
+            "1101653fbdee_pure_table",
+            "6af73efaae07_pure_table",
+            "1133a590cff4_pure_table",
+            "43e0e3fd051c_pure_table",
+            "be8de494bbcd_pure_table",
+            "0aa1ed16a109_pure_table",
+            "99b70224d530_pure_table",
+            "d87c2c16c18e_pure_table",
+            "df11889aec95_pure_table",
+            "e5acd6051b33_pure_table"
+          ],
+          "metrics": {
+            "precision@1": 1.0,
+            "recall@1": 1.0,
+            "ndcg@1": 1.0,
+            "precision@3": 0.3333333333333333,
+            "recall@3": 1.0,
+            "ndcg@3": 1.0,
+            "precision@5": 0.2,
+            "recall@5": 1.0,
+            "ndcg@5": 1.0,
+            "precision@10": 0.1,
+            "recall@10": 1.0,
+            "ndcg@10": 1.0,
+            "mrr": 1.0
+          }
+        }
+      }
+    },
+    {
+      "query_id": "257ea2d9e890",
+      "query": "who has won a calendar grand slam in tennis",
+      "qrels": {
+        "257ea2d9e890_pure_table": 1.0
+      },
+      "final_ranked_docs": [
+        "257ea2d9e890_pure_table",
+        "635a2e6d85ab_pure_table",
+        "924eae1aed38_pure_table",
+        "742d4635143b_pure_table",
+        "2943c3d6669f_pure_table",
+        "799ef3775047_pure_table",
+        "147e2d191853_pure_table",
+        "52358f544ea4_pure_table",
+        "47d459ba4f12_pure_table",
+        "2578e91fda10_pure_table"
+      ],
+      "metrics": {
+        "precision@1": 1.0,
+        "recall@1": 1.0,
+        "ndcg@1": 1.0,
+        "precision@3": 0.3333333333333333,
+        "recall@3": 1.0,
+        "ndcg@3": 1.0,
+        "precision@5": 0.2,
+        "recall@5": 1.0,
+        "ndcg@5": 1.0,
+        "precision@10": 0.1,
+        "recall@10": 1.0,
+        "ndcg@10": 1.0,
+        "mrr": 1.0
+      },
+      "stage_details": {
+        "coarse": {
+          "retrieved": [
+            "635a2e6d85ab_pure_table",
+            "257ea2d9e890_pure_table",
+            "924eae1aed38_pure_table",
+            "742d4635143b_pure_table",
+            "799ef3775047_pure_table",
+            "6e8ff4a2ca4a_pure_table",
+            "2943c3d6669f_pure_table",
+            "0f9256c02684_pure_table",
+            "aa7c0b0fa6d4_pure_table",
+            "43e0e3fd051c_pure_table"
+          ],
+          "metrics": {
+            "precision@1": 0.0,
+            "recall@1": 0.0,
+            "ndcg@1": 0.0,
+            "precision@3": 0.3333333333333333,
+            "recall@3": 1.0,
+            "ndcg@3": 0.6309297535714575,
+            "precision@5": 0.2,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "precision@10": 0.1,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "mrr": 0.5
+          }
+        }
+      }
+    },
+    {
+      "query_id": "461dfaa926cd",
+      "query": "where does british airways fly to in south america",
+      "qrels": {
+        "461dfaa926cd_pure_table": 1.0
+      },
+      "final_ranked_docs": [
+        "d9bf5dcbc575_pure_table",
+        "0208d2c2c872_pure_table",
+        "461dfaa926cd_pure_table",
+        "50b87d961e0d_pure_table",
+        "dcc15381976b_pure_table",
+        "e47c9dfa74b7_pure_table",
+        "2586034799f1_pure_table",
+        "1232a8c1885a_pure_table",
+        "6ad89786341d_pure_table",
+        "fb7d105fd0f9_pure_table"
+      ],
+      "metrics": {
+        "precision@1": 0.0,
+        "recall@1": 0.0,
+        "ndcg@1": 0.0,
+        "precision@3": 0.3333333333333333,
+        "recall@3": 1.0,
+        "ndcg@3": 0.5,
+        "precision@5": 0.2,
+        "recall@5": 1.0,
+        "ndcg@5": 0.5,
+        "precision@10": 0.1,
+        "recall@10": 1.0,
+        "ndcg@10": 0.5,
+        "mrr": 0.3333333333333333
+      },
+      "stage_details": {
+        "coarse": {
+          "retrieved": [
+            "d9bf5dcbc575_pure_table",
+            "461dfaa926cd_pure_table",
+            "dcc15381976b_pure_table",
+            "e47c9dfa74b7_pure_table",
+            "fb7d105fd0f9_pure_table",
+            "2586034799f1_pure_table",
+            "50b87d961e0d_pure_table",
+            "b793da7ca81e_pure_table",
+            "7df1b68046c1_pure_table",
+            "e91f75ccfd38_pure_table"
+          ],
+          "metrics": {
+            "precision@1": 0.0,
+            "recall@1": 0.0,
+            "ndcg@1": 0.0,
+            "precision@3": 0.3333333333333333,
+            "recall@3": 1.0,
+            "ndcg@3": 0.6309297535714575,
+            "precision@5": 0.2,
+            "recall@5": 1.0,
+            "ndcg@5": 0.6309297535714575,
+            "precision@10": 0.1,
+            "recall@10": 1.0,
+            "ndcg@10": 0.6309297535714575,
+            "mrr": 0.5
+          }
+        }
+      }
+    }
+  ]
+}
