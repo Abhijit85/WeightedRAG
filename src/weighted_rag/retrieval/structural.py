@@ -177,7 +177,7 @@ class StructuralSimilarityScorer:
     
     def _embed_texts(self, texts: List[str]) -> np.ndarray:
         """Embed texts using the same model as content embeddings."""
-        print(f"Embedding {len(texts)} structural texts...")
+        
         
         # Try to use the first available model in the embedder
         if hasattr(self.embedding_model, '_models') and self.embedding_model._models:
@@ -202,6 +202,7 @@ class StructuralSimilarityScorer:
                         )
                         all_embeddings.append(batch_embeddings)
                         pbar.update(len(batch_texts))
+                         
                 
                 embeddings = np.vstack(all_embeddings)
                 return embeddings.astype(np.float32)
