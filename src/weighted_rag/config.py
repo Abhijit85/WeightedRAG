@@ -46,12 +46,12 @@ class RetrievalConfig:
             ),
         ]
     )
-    lambda_similarity: float = .60  # Primary weight (restored after removing delta_structure)
+    lambda_similarity: float = .80  # Primary weight (restored after removing delta_structure)
     alpha_reliability: float = 0.00  # Metadata weight
     beta_temporal: float = 0.00
     gamma_domain: float = 0.00
     zeta_structural_similarity: float = 0.20  # Embedding-based structural similarity
-    epsilon_bm25: float = 0.20  # BM25 weight
+    epsilon_bm25: float = 0.00  # BM25 weight
     
     # Structural similarity configuration
     enable_structural_similarity: bool = True

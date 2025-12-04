@@ -41,7 +41,7 @@ def load_config(path: Path | None) -> PipelineConfig:
         from weighted_rag.config import EmbeddingConfig, ChunkingConfig, RetrievalConfig, IndexStageConfig,CrossEncoderConfig
         
         # Use consistent model name for both embedding and retrieval stages
-        model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        model_name = "deepset/all-mpnet-base-v2-table"
         
         embedding_config = EmbeddingConfig(
             model_name=model_name,
@@ -55,14 +55,14 @@ def load_config(path: Path | None) -> PipelineConfig:
         chunking_config = ChunkingConfig(
             max_tokens=480,  # Reasonable chunk size
             overlap_tokens=32,
-            tokenizer_name="sentence-transformers/all-MiniLM-L6-v2"
+            tokenizer_name="deepset/all-mpnet-base-v2-table"
         )
         
         retrieval_config = RetrievalConfig(
             stages=[
                 IndexStageConfig(
                     name="coarse",
-                    dimension=384,
+                    dimension=768,
                     top_k=200,  # Smaller top-k to avoid memory issues
                     weight=1.0,
                     normalize=True,

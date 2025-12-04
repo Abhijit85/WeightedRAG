@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 import numpy as np
+from tqdm import tqdm
 
 from ..types import Query, RetrievedChunk, Chunk
 
@@ -121,21 +122,26 @@ class StructuralSimilarityScorer:
         
         if texts_to_embed:
             # Use the same embedding model as content
+            print(f"Generating embeddings for {len(texts_to_embed)} structural documents...")
             embeddings = self._embed_texts(texts_to_embed)
             
-            # Store embeddings indexed by table_id
-            for table_id, embedding in zip(table_ids_ordered, embeddings):
-                self._structural_embeddings[table_id] = embedding
+            # Store embeddings indexed by table_id with progress bar
+            print("Storing structural embeddings...")
+            with tqdm(total=len(table_ids_ordered), desc="Processing embeddings", unit="embeddings") as pbar:
+                for table_id, embedding in zip(table_ids_ordered, embeddings):
+                    self._structural_embeddings[table_id] = embedding
+                    pbar.update(1)
             
             # Cache results
             if cache_file:
+                print("Caching structural embeddings...")
                 np.savez(
                     cache_file,
                     embeddings=self._structural_embeddings,
                     table_ids=table_ids_ordered
                 )
             
-            print(f"Computed {len(self._structural_embeddings)} structural embeddings")
+            print(f"✓ Computed {len(self._structural_embeddings)} structural embeddings")
     
     def _structure_to_text(self, structure_data: Dict[str, Any]) -> str:
         """Convert structure data to normalized text for embedding."""
@@ -171,6 +177,8 @@ class StructuralSimilarityScorer:
     
     def _embed_texts(self, texts: List[str]) -> np.ndarray:
         """Embed texts using the same model as content embeddings."""
+        print(f"Embedding {len(texts)} structural texts...")
+        
         # Try to use the first available model in the embedder
         if hasattr(self.embedding_model, '_models') and self.embedding_model._models:
             # Get the first available model
@@ -178,12 +186,24 @@ class StructuralSimilarityScorer:
             if available_models:
                 model_name = list(available_models.keys())[0]
                 model = available_models[model_name]
-                embeddings = model.encode(
-                    texts,
-                    batch_size=64,
-                    normalize_embeddings=False,
-                    convert_to_numpy=True
-                )
+                
+                # Add progress bar for batch processing
+                batch_size = 64
+                all_embeddings = []
+                
+                with tqdm(total=len(texts), desc="Computing embeddings", unit="texts") as pbar:
+                    for i in range(0, len(texts), batch_size):
+                        batch_texts = texts[i:i + batch_size]
+                        batch_embeddings = model.encode(
+                            batch_texts,
+                            batch_size=batch_size,
+                            normalize_embeddings=False,
+                            convert_to_numpy=True
+                        )
+                        all_embeddings.append(batch_embeddings)
+                        pbar.update(len(batch_texts))
+                
+                embeddings = np.vstack(all_embeddings)
                 return embeddings.astype(np.float32)
         
         # Fallback: try using _model_encode with available model
